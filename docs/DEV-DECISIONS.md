@@ -58,6 +58,9 @@ Track technical verification separately from platform outcomes:
 
 1. D00: complete source audit, baseline and gap matrix.
 2. D01: define a machine-readable `ProgramPolicy` and negative test fixtures.
+   - Initial implementation exists in `policy/program.go` and `policy/program_test.go`.
+   - It is an isolated compiler/matcher only; task persistence, runtime enforcement and test execution remain outstanding.
+   - Contract and limitations: `docs/M1-POLICY-COMPILER.md`.
 3. D02: enforce Scope/Network/Side-effect policy at all egress paths, fail closed.
 4. D03: version and offline-test `bug-bounty-hunting` Skill handoffs.
 5. D04: ReconFTW adapter with provenance and no scope expansion.
