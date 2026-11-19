@@ -286,9 +286,9 @@ func compileRule(rule AssetRule) (compiledRule, error) {
 		if err != nil {
 			return compiledRule{}, err
 		}
-		registrable, err := publicsuffix.EffectiveTLDPlusOne(suffix)
-		if err != nil || registrable != suffix {
-			return compiledRule{}, errors.New("wildcard must be rooted at a registrable domain, not a public suffix")
+		publicSuffix, _ := publicsuffix.PublicSuffix(suffix)
+		if suffix == publicSuffix {
+			return compiledRule{}, errors.New("wildcard must not target a public suffix")
 		}
 		cr.kind, cr.domain = ruleWildcardDomain, suffix
 		cr.pattern = "*." + suffix
