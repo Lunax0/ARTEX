@@ -25,6 +25,7 @@ const SchemaVersion = 1
 
 const (
 	CodeAllowed          = "POLICY_ALLOWED"
+	CodeUnavailable      = "POLICY_UNAVAILABLE"
 	CodeOutOfScope       = "POLICY_OUT_OF_SCOPE"
 	CodeExcluded         = "POLICY_EXCLUDED"
 	CodeInvalidTarget    = "POLICY_INVALID_TARGET"
@@ -153,6 +154,9 @@ func CompileAt(input ProgramPolicy, now time.Time) (*CompiledPolicy, error) {
 	if input.RetrievedAt.IsZero() || input.ApprovedAt.IsZero() || input.ExpiresAt.IsZero() {
 		return nil, errors.New("retrieved_at, approved_at and expires_at are required")
 	}
+	if input.RetrievedAt.After(now) || input.ApprovedAt.After(now) {
+		return nil, errors.New("retrieved_at and approved_at must not be in the future")
+	}
 	if input.ApprovedAt.Before(input.RetrievedAt) {
 		return nil, errors.New("approved_at must not precede retrieved_at")
 	}
@@ -176,8 +180,8 @@ func CompileAt(input ProgramPolicy, now time.Time) (*CompiledPolicy, error) {
 	if compileErr != nil {
 		return nil, fmt.Errorf("out_of_scope: %w", compileErr)
 	}
-	compiled.snapshot.InScope = snapshotRules(input.InScope, compiled.inScope)
-	compiled.snapshot.OutOfScope = snapshotRules(input.OutOfScope, compiled.excluded)
+	compiled.snapshot.InScope = snapshotRules(compiled.inScope)
+	compiled.snapshot.OutOfScope = snapshotRules(compiled.excluded)
 
 	canonical, err := json.Marshal(compiled.snapshot)
 	if err != nil {
@@ -242,10 +246,10 @@ func compileRules(rules []AssetRule) ([]compiledRule, error) {
 
 func compileRule(rule AssetRule) (compiledRule, error) {
 	raw := strings.TrimSpace(rule.Pattern)
-	if raw == "" || strings.ContainsAny(raw, "/?#@") && !strings.Contains(raw, "/") {
-		return compiledRule{}, errors.New("empty or malformed asset pattern")
+	if raw == "" {
+		return compiledRule{}, errors.New("asset pattern is empty")
 	}
-	if strings.Contains(raw, "://") || strings.ContainsAny(raw, " \t\r\n") {
+	if strings.Contains(raw, "://") || strings.ContainsAny(raw, " \t\r\n?#@") {
 		return compiledRule{}, errors.New("asset pattern must be a host, wildcard, IP or CIDR, not a URL or command")
 	}
 	cr := compiledRule{pattern: raw}
@@ -331,7 +335,11 @@ func normalizeHost(raw string) (string, error) {
 	if len(labels) < 2 {
 		return "", errors.New("domain must contain at least two labels")
 	}
+	allNumeric := true
 	for _, label := range labels {
+		if !numericAddressLabel(label) {
+			allNumeric = false
+		}
 		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
 			return "", errors.New("domain label is invalid")
 		}
@@ -341,10 +349,33 @@ func normalizeHost(raw string) (string, error) {
 			}
 		}
 	}
+	if allNumeric {
+		return "", errors.New("ambiguous numeric host notation is not supported; use a canonical IP literal")
+	}
 	return ascii, nil
 }
 
-func snapshotRules(source []AssetRule, compiled []compiledRule) []AssetRule {
+func numericAddressLabel(label string) bool {
+	if label == "" {
+		return false
+	}
+	if strings.HasPrefix(label, "0x") && len(label) > 2 {
+		for _, c := range label[2:] {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return false
+			}
+		}
+		return true
+	}
+	for _, c := range label {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func snapshotRules(compiled []compiledRule) []AssetRule {
 	out := make([]AssetRule, 0, len(compiled))
 	for _, rule := range compiled {
 		ports := make([]uint16, 0, len(rule.ports))
@@ -402,7 +433,7 @@ func cloneRules(in []AssetRule) []AssetRule {
 
 func (p *CompiledPolicy) CheckURL(raw string) Decision {
 	if p == nil {
-		return denied(CodeExpired, "no compiled program policy is attached")
+		return denied(CodeUnavailable, "no compiled program policy is attached")
 	}
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || !u.IsAbs() || u.Opaque != "" || u.User != nil {
@@ -440,7 +471,7 @@ func (p *CompiledPolicy) CheckTarget(host string, port int) Decision {
 
 func (p *CompiledPolicy) CheckTargetAt(host string, port int, now time.Time) Decision {
 	if p == nil {
-		return denied(CodeExpired, "no compiled program policy is attached")
+		return denied(CodeUnavailable, "no compiled program policy is attached")
 	}
 	if !p.snapshot.ExpiresAt.After(now) {
 		return denied(CodeExpired, "the program policy snapshot has expired; refresh and approve it before continuing")
@@ -505,7 +536,7 @@ func (r compiledRule) matchesHost(host string) bool {
 // allow-rule; an out-of-scope IP/CIDR rule always wins.
 func (p *CompiledPolicy) CheckResolvedIP(host string, port int, rawIP string) Decision {
 	if p == nil {
-		return denied(CodeExpired, "no compiled program policy is attached")
+		return denied(CodeUnavailable, "no compiled program policy is attached")
 	}
 	base := p.CheckTarget(host, port)
 	if !base.Allowed {
@@ -580,7 +611,7 @@ func isSpecialAddress(ip netip.Addr) bool {
 
 func (p *CompiledPolicy) AllowsOperation(op Operation) Decision {
 	if p == nil {
-		return denied(CodeExpired, "no compiled program policy is attached")
+		return denied(CodeUnavailable, "no compiled program policy is attached")
 	}
 	if !p.snapshot.ExpiresAt.After(time.Now()) {
 		return denied(CodeExpired, "the program policy snapshot has expired; refresh and approve it before continuing")
