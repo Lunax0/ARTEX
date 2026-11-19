@@ -152,6 +152,18 @@ func TestIDNAAndTrailingDotNormalization(t *testing.T) {
 	}
 }
 
+func TestNestedWildcardScopeIsAllowedWithoutIncludingItsApex(t *testing.T) {
+	input := testPolicy()
+	input.InScope = []AssetRule{{Pattern: "*.staging.example.com"}}
+	p := mustCompile(t, input)
+	if got := p.CheckTarget("api.staging.example.com", 443); !got.Allowed {
+		t.Fatalf("nested wildcard child denied: %+v", got)
+	}
+	if got := p.CheckTarget("staging.example.com", 443); got.Allowed {
+		t.Fatalf("nested wildcard unexpectedly included its apex: %+v", got)
+	}
+}
+
 func TestWildcardMustNotCoverPublicSuffix(t *testing.T) {
 	for _, pattern := range []string{"*.com", "*.co.uk", "*.*.example.com", "api.*.example.com"} {
 		input := testPolicy()
