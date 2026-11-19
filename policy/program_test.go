@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var policyNow = time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)
+var policyNow = time.Now().UTC()
 
 func testPolicy() ProgramPolicy {
 	source := sha256.Sum256([]byte("reviewed program policy"))
