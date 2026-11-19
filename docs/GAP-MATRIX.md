@@ -9,6 +9,7 @@ Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementa
 |---|---|---:|---|---|
 | Planner / Worker / MainAgent | `agent/planner.go`, `agent/worker.go`, `server/engine.go` | EXISTS | Existing orchestration should be preserved; role/session constraints need audit | D00/D06 |
 | Asset graph / exploration graph | `db/exploration.go`, asset stores and graph tools | EXISTS | Asset existence, authorization, and test coverage must remain distinct | D01/D05 |
+| ProgramPolicy compiler | `policy/program.go`, `policy/program_test.go` | PARTIAL | Versioned immutable snapshot, exact/wildcard/IP/CIDR matching, exclusions, expiry, operation permissions and bounded limits now exist; not persisted or wired to runtime enforcement; tests not yet executed | D01/D02 |
 | TaskScope | `db/task_scope.go` | PARTIAL | Source comment explicitly says this is coverage/query scope, not enforced; it does not block out-of-scope calls | D01/D02 |
 | Target Gate | `intercept/target_gate.go`, `guard/guard.go` | PARTIAL | Opt-in; new tasks default off. Approval pins are not a program policy compiler | D02 |
 | Target extraction | `intercept/target_extract.go` | PARTIAL | Declared-input inspection cannot prevent undeclared network connections; unknown/custom tools require explicit review | D02 |
