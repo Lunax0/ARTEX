@@ -25,6 +25,10 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 
 ## 2. P0 policy and scope tests (must pass before live-target use)
 
+### ProgramPolicy package tests
+
+The initial suite in `policy/program_test.go` covers exact and wildcard semantics, exclusions, ports, CIDR/IP matching, HTTP URL parsing, IDNA/trailing-dot normalization, public-suffix wildcard rejection, metadata/expiry, read-only defaults, resolved private addresses, ambiguous numeric hosts, digest stability and detached snapshots. These tests have been authored but have **not yet been executed**; run `go test ./policy` when a supported Go toolchain and dependencies are available.
+
 ### Policy compilation
 - Reject missing/empty policy, malformed URL/domain/CIDR, wildcard overreach, contradictory allow/deny rules, invalid rate/concurrency, and unknown policy versions.
 - Preserve exact source policy text, retrieval time, program/version identifier, hash, parser version, and operator approval.
