@@ -312,7 +312,11 @@ func compileRule(rule AssetRule) (compiledRule, error) {
 
 func normalizeHost(raw string) (string, error) {
 	host := strings.TrimSpace(raw)
-	host = strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	} else if strings.ContainsAny(host, "[]") {
+		return "", errors.New("unbalanced IP literal brackets")
+	}
 	host = strings.TrimSuffix(host, ".")
 	if host == "" || strings.ContainsAny(host, "/?#@%") {
 		return "", errors.New("invalid host syntax")
@@ -450,6 +454,9 @@ func (p *CompiledPolicy) CheckURL(raw string) Decision {
 	port := 80
 	if scheme == "https" {
 		port = 443
+	}
+	if strings.HasSuffix(u.Host, ":") {
+		return denied(CodeInvalidTarget, "target URL has an empty port")
 	}
 	if rawPort := u.Port(); rawPort != "" {
 		n, err := strconv.Atoi(rawPort)
