@@ -97,6 +97,15 @@ func (i *Interceptor) policyProxyConfigured(toolName string) bool {
 	return upstream != nil && upstream() || toolProxy != nil && toolProxy(toolName)
 }
 
+func (i *Interceptor) isDerivedEndpoint(host string, port int) bool {
+	for _, exemption := range i.DerivedExemptions() {
+		if exemption.Host == host && exemption.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
 // dialPolicyTarget resolves the hostname once, checks every answer against the
 // immutable program scope, and dials only those exact checked IP addresses.
 // This path is used when the optional Target Gate is off.
@@ -114,6 +123,10 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, n
 	}
 	if decision := scope.ProgramPolicy.CheckTarget(t.Host, t.Port); !decision.Allowed {
 		return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason}
+	}
+	if i.isDerivedEndpoint(t.Host, t.Port) {
+		return nil, &dialError{code: policy.CodeProxyUnsupported, target: t.String(),
+			reason: "this connection is routed to a platform-derived service/proxy endpoint whose ultimate egress destination is not controlled by ProgramPolicy"}
 	}
 
 	var ips []string
