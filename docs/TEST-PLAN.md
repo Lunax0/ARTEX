@@ -39,7 +39,7 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 - `db/intercept_decided_by_test.go`: verify ProgramPolicy decisions persist with `decision_source=program_policy`, `decided_by=system`, sanitized target-only input, policy digest metadata, history detail retrieval and combined filters.
 - `db/program_policy_events_test.go`: verify dedicated event persistence, bounded retrieval, validation and rejection of malformed target authorities. The event table currently has application-level insert/list/get APIs, not database-enforced immutability.
 - `db/program_policy_revocations_test.go`: verify immutable first revocation attestation, exact-source lookup, idempotency and validation.
-- `server/program_policy_test.go`: verify authenticated revocation API and that revoking one source disables every task sharing the same program ID + source digest.
+- `server/program_policy_test.go`: verify authenticated revoke/status APIs, reject creation from an already revoked source, and ensure revoking one source disables every task sharing the same program ID + source digest.
 - Guard, redirect and dial paths recheck revocation state; missing or unavailable revocation checks fail closed.
 - `db/program_policy_budget_test.go`: verify PostgreSQL-backed rate/concurrency sharing across independent DB handles, redirect token charging and cancellation.
 - Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate; allowed requests fail closed if the durable event ledger is unavailable.
