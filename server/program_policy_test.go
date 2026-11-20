@@ -134,11 +134,11 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 	source := sha256.Sum256([]byte("revocable program policy"))
 	policyInput := map[string]any{
 		"schema_version": 1,
-		"program_id": "revocation-api-test",
-		"policy_url": "https://bugcrowd.com/engagements/revocation-api-test",
-		"source_sha256": hex.EncodeToString(source[:]),
-		"in_scope": []any{map[string]any{"pattern": "app.example.com"}},
-		"expires_at": now.Add(24*time.Hour).Format(time.RFC3339Nano),
+		"program_id":     "revocation-api-test",
+		"policy_url":     "https://bugcrowd.com/engagements/revocation-api-test",
+		"source_sha256":  hex.EncodeToString(source[:]),
+		"in_scope":       []any{map[string]any{"pattern": "app.example.com"}},
+		"expires_at":     now.Add(24 * time.Hour).Format(time.RFC3339Nano),
 		"limits": map[string]any{
 			"requests_per_second": 1, "burst": 1, "max_concurrency": 1,
 			"request_timeout_seconds": 30, "max_retries": 0,
@@ -146,8 +146,8 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 	}
 	create := func(description string) string {
 		request := map[string]any{
-			"description": description,
-			"goal": "Read-only authorized testing of app.example.com with owned accounts.",
+			"description":    description,
+			"goal":           "Read-only authorized testing of app.example.com with owned accounts.",
 			"program_policy": policyInput,
 		}
 		raw, _ := json.Marshal(request)
