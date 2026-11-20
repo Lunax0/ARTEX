@@ -1436,7 +1436,7 @@ export interface AssetInterceptRule {
 }
 
 export interface InterceptPending {
-  decision_source?: "rule" | "model" | "unknown" | "";
+  decision_source?: "rule" | "model" | "program_policy" | "unknown" | "";
   // Actor that settled the request, exactly as stored: "" while pending and on
   // rows decided before the column existed (shown as "Legacy").
   decided_by?: "human" | "rule" | "model" | "system" | "";
