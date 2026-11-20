@@ -647,6 +647,16 @@ func TestProgramPolicyDialAlsoAppliesWhenTargetGateIsOn(t *testing.T) {
 	if got := rec.calls(); !slices.Equal(got, []string{"203.0.113.7:" + port}) || hits.Load() != 1 {
 		t.Fatalf("dialled %v, hits=%d; want pinned, policy-checked IP", got, hits.Load())
 	}
+	// A human pin must not widen ProgramPolicy: a later private DNS answer
+	// remains blocked before ARTEX requests a new pin or opens a socket.
+	g.res.set("app.example.com", "10.20.30.40")
+	if _, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeNonPublicAddress) {
+		t.Fatalf("Target Gate pin widened policy to a private DNS answer: %v", err)
+	}
+	if got := rec.calls(); len(got) != 1 || hits.Load() != 1 {
+		t.Fatalf("private DNS answer reached the network: dialled=%v hits=%d", got, hits.Load())
+	}
 }
 
 func TestProgramPolicyDialRechecksRevocationAfterResolution(t *testing.T) {
