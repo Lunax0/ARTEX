@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -94,7 +95,19 @@ func (i *Interceptor) policyProxyConfigured(toolName string) bool {
 	i.mu.RLock()
 	upstream, toolProxy := i.upstreamProxy, i.toolProxy
 	i.mu.RUnlock()
-	return upstream != nil && upstream() || toolProxy != nil && toolProxy(toolName)
+	if upstream != nil && upstream() || toolProxy != nil && toolProxy(toolName) {
+		return true
+	}
+	// Go's default HTTP transport may honor environment proxy variables even
+	// when no explicit ARTEX proxy is configured. We cannot infer the proxy's
+	// ultimate CONNECT destination from DialContext, so policy-bound requests
+	// fail closed whenever an environment proxy is present.
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		if strings.TrimSpace(os.Getenv(key)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (i *Interceptor) isDerivedEndpoint(host string, port int) bool {
