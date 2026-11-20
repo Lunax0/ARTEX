@@ -582,6 +582,7 @@ func TestProgramPolicyDialEnforcedWithTargetGateOff(t *testing.T) {
 	scope.Enabled = func() bool { return false }
 	scope.ProgramPolicyRequired = true
 	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
 	ctx := WithTargetScope(context.Background(), scope)
 
 	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "policy-allowed" {
@@ -608,6 +609,7 @@ func TestProgramPolicyDialRejectsOutOfScopeAndProxyEgress(t *testing.T) {
 	scope.Enabled = func() bool { return false }
 	scope.ProgramPolicyRequired = true
 	scope.ProgramPolicy = compiledDialPolicy(t)
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
 	ctx := WithTargetScope(context.Background(), scope)
 
 	if _, err := PinnedDialer("WebFetch", true)(ctx, "tcp", "outside.example.org:443"); err == nil ||
@@ -640,5 +642,32 @@ func TestProgramPolicyDialAlsoAppliesWhenTargetGateIsOn(t *testing.T) {
 	}
 	if got := rec.calls(); !slices.Equal(got, []string{"203.0.113.7:" + port}) || hits.Load() != 1 {
 		t.Fatalf("dialled %v, hits=%d; want pinned, policy-checked IP", got, hits.Load())
+	}
+}
+
+func TestProgramPolicyDialRechecksRevocationAfterResolution(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "revocation-blocked")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	checks := 0
+	scope.ProgramPolicyCheck = func(context.Context) error {
+		checks++
+		if checks >= 2 {
+			return errors.New("policy source revoked during DNS resolution")
+		}
+		return nil
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	_, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) {
+		t.Fatalf("revocation during DNS resolution did not stop the connection: %v", err)
+	}
+	if checks < 2 || len(rec.calls()) != 0 || hits.Load() != 0 {
+		t.Fatalf("revocation check count=%d dialled=%v hits=%d", checks, rec.calls(), hits.Load())
 	}
 }
