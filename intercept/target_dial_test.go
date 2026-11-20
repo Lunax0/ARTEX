@@ -635,6 +635,7 @@ func TestProgramPolicyDialAlsoAppliesWhenTargetGateIsOn(t *testing.T) {
 	scope := g.scope
 	scope.ProgramPolicyRequired = true
 	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
 	ctx := WithTargetScope(context.Background(), scope)
 
 	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "policy-and-pin" {
