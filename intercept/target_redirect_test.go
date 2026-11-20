@@ -236,6 +236,7 @@ func TestProgramPolicyRedirectCheckIsIndependentOfTargetGate(t *testing.T) {
 		TaskID: "77", Enabled: func() bool { return false },
 		ProgramPolicyRequired: true, ProgramPolicy: compiled,
 		ProgramPolicyCheck: func(context.Context) error { return nil },
+		ProgramPolicyAudit: func(context.Context, string, string, string, string, string, string, []string) error { return nil },
 	}
 	var charged []string
 	ctx := WithTargetScope(context.Background(), scope)
