@@ -72,7 +72,7 @@ func PinnedDialer(toolName string, scoped bool) func(ctx context.Context, networ
 			if scope.Enabled != nil && scope.Enabled() {
 				return scope.Interceptor.dialTarget(ctx, scope, toolName, network, addr)
 			}
-			return scope.Interceptor.dialPolicyTarget(ctx, scope, network, addr)
+			return scope.Interceptor.dialPolicyTarget(ctx, scope, toolName, network, addr)
 		case scope.Enabled == nil || !scope.Enabled():
 			if scope.Interceptor != nil {
 				return scope.Interceptor.baseDialer()(ctx, network, addr)
@@ -141,7 +141,7 @@ func checkPolicyRevocation(ctx context.Context, scope TargetScope) error {
 // dialPolicyTarget resolves the hostname once, checks every answer against the
 // immutable program scope, and dials only those exact checked IP addresses.
 // This path is used when the optional Target Gate is off.
-func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, network, addr string) (net.Conn, error) {
+func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, toolName, network, addr string) (net.Conn, error) {
 	t, err := addrTarget(network, addr)
 	if err != nil {
 		return nil, &dialError{code: policy.CodeInvalidTarget, target: addr, reason: "the connection address could not be parsed: " + err.Error()}
@@ -195,7 +195,7 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, n
 	if err := auditPolicyDial(ctx, scope, "WebFetch", t, "allow", policy.CodeAllowed, "resolved addresses passed ProgramPolicy checks", ips); err != nil {
 		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: "the dial audit event could not be persisted: " + err.Error()}
 	}
-	return i.dialAddrs(ctx, network, ips, t.Port)
+	return i.dialAddrs(ctx, toolName, network, ips, t.Port, t)
 }
 
 // dialTarget decides one connection of a gated scope and opens it. The asset
@@ -283,7 +283,7 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 		if scope.ProgramPolicyRequired {
 			// Policy-bound calls must connect to the exact addresses checked above;
 			// never hand the hostname back to the OS resolver.
-			return i.dialAddrs(ctx, network, ct.ips, t.Port)
+			return i.dialAddrs(ctx, toolName, network, ct.ips, t.Port, t)
 		}
 		return i.baseDialer()(ctx, network, addr)
 	default:
@@ -318,7 +318,7 @@ func addrTarget(network, addr string) (Target, error) {
 // dialAddrs connects to the addresses the decision compared, in their canonical
 // order: the first that accepts wins. An address of the wrong family for tcp4
 // or tcp6 is skipped. When every attempt fails, the last error is returned.
-func (i *Interceptor) dialAddrs(ctx context.Context, network string, ips []string, port int) (net.Conn, error) {
+func (i *Interceptor) dialAddrs(ctx context.Context, toolName, network string, ips []string, port int, policyTarget Target) (net.Conn, error) {
 	dial := i.baseDialer()
 	var last error = &net.AddrError{Err: "no suitable address found", Addr: strings.Join(ips, ", ")}
 	for _, ip := range ips {
@@ -328,6 +328,7 @@ func (i *Interceptor) dialAddrs(ctx context.Context, network string, ips []strin
 		}
 		if scope, ok := TargetScopeFromContext(ctx); ok && scope.ProgramPolicyRequired {
 			if err := checkPolicyRevocation(ctx, scope); err != nil {
+				_ = auditPolicyDial(ctx, scope, toolName, policyTarget, "deny", policy.CodeUnavailable, err.Error(), []string{ip})
 				return nil, &dialError{code: policy.CodeUnavailable, target: net.JoinHostPort(ip, strconv.Itoa(port)), reason: err.Error()}
 			}
 		}
