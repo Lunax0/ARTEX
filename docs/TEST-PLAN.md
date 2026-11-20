@@ -67,7 +67,7 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 - Extend the same policy budget contract to any future network-capable tool before enabling it.
 - GET/HEAD/OPTIONS are not automatically safe; operation semantics and policy still apply.
 - Block destructive/write operations unless an explicit policy capability and an owned test resource are recorded.
-- Prove cancellation and task pause stop in-flight and queued work. Policy revocation and budget-exhaustion tests remain blocked on the missing lifecycle/governor implementation.
+- Prove cancellation and task pause stop in-flight and queued work. Shared-budget cancellation and exact-source policy revocation have DB/Guard/API tests; add adversarial race tests for revocation during DNS resolution and long-running requests.
 
 ### Account/data boundaries
 - Use only researcher-owned accounts and objects.
