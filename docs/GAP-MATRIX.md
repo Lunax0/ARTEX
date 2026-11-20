@@ -1,6 +1,6 @@
 # ARTEX Gap Matrix
 
-Status: M0 source review plus initial M1 ProgramPolicy runtime integration; items marked `PARTIAL` are not certified as safe for live bounty use.  
+Status: M0 source review plus M1 ProgramPolicy runtime integration; latest CI run #59 has Go stable, Web, Shell and Python jobs passed, with Go race tests still running. Items marked `PARTIAL` are not certified as safe for live bounty use.  
 Baseline: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
 
 Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementation exists but a material gap remains; `MISSING` = no sufficient implementation identified in this review; `UNTESTED` = source suggests a capability but behavior has not been reproduced in the local baseline.
@@ -9,7 +9,7 @@ Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementa
 |---|---|---:|---|---|
 | Planner / Worker / MainAgent | `agent/planner.go`, `agent/worker.go`, `server/engine.go` | EXISTS | Existing orchestration should be preserved; role/session constraints need audit | D00/D06 |
 | Asset graph / exploration graph | `db/exploration.go`, asset stores and graph tools | EXISTS | Asset existence, authorization, and test coverage must remain distinct | D01/D05 |
-| ProgramPolicy compiler + task binding | `policy/program.go`, `db/migrations/0008_task_program_policy.sql`, `server/server.go`, `server/manager.go` | PARTIAL | Immutable snapshot, server-stamped approval, JSONB persistence, reload validation and task Guard binding exist. Policy is optional for legacy tasks; no refresh/revocation UI or resolved-IP/usage audit ledger yet; sanitized allow/deny decisions now reuse intercept history; PR #1 CI run 44707635509 passed all five jobs, including Go unit/integration and race tests | D01/D02 |
+| ProgramPolicy compiler + task binding | `policy/program.go`, `db/migrations/0008_task_program_policy.sql`, `server/server.go`, `server/manager.go` | PARTIAL | Immutable snapshot, server-stamped approval, JSONB persistence, reload validation and task Guard binding exist. Policy remains optional for legacy tasks. No in-place refresh/revocation workflow or resolved-IP/per-hop audit yet. Allowed WebFetch calls now fail closed if the dedicated decision event cannot be persisted | D01/D02 |
 | TaskScope | `db/task_scope.go` | PARTIAL | Source comment explicitly says this is coverage/query scope, not enforced; it does not block out-of-scope calls | D01/D02 |
 | Target Gate | `intercept/target_gate.go`, `guard/guard.go` | PARTIAL | Remains opt-in and additional to ProgramPolicy. Policy-bound WebFetch is checked even with Target Gate off; pins/approvals cannot widen scope | D02 |
 | Target extraction | `intercept/target_extract.go` | PARTIAL | Declared-input inspection cannot prevent undeclared network connections; unknown/custom tools require explicit review | D02 |
@@ -37,10 +37,11 @@ Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementa
 
 1. **P0 — TaskScope is still not an authorization boundary.** Only tasks created with a valid ProgramPolicy are policy-bound; legacy tasks remain unchanged. A bounty task must include an explicit reviewed policy snapshot.
 2. **P0 — ProgramPolicy is not a complete egress sandbox.** WebFetch is policy-checked; Bash/shell/MCP/custom/unknown tools are blocked in policy-bound tasks. Do not re-enable subprocess recon until OS/container egress enforcement exists.
-3. **P0 — request budgets are only partially enforced.** The supported WebFetch path charges the initial request and each followed redirect hop, with a process-local per-program token bucket, concurrency slot and timeout. Sanitized ProgramPolicy decisions are now visible in intercept history. Separate ARTEX replicas do not share this budget and restart resets it. Other network paths remain blocked until integrated with the same policy contract; automatic 429/503 retries and durable usage accounting are outstanding.
-4. **P0 — proxy-aware enforcement is intentionally fail-closed.** Policy-bound WebFetch cannot use a configured proxy until the proxy enforces the same destination policy.
-5. **P1 — no unified hunting Skill or ReconFTW adapter.** These follow after the safety execution contract.
-6. **P1 — operation-level coverage and independent verification need stronger machine-checkable contracts.**
+3. **P0 — request budgets are only partially enforced.** The supported WebFetch path now uses PostgreSQL-backed per-program token buckets and concurrency leases shared across instances using the same DB. Initial requests and followed redirect hops are charged. Other network paths remain blocked until integrated with the same policy contract; automatic 429/503 retries, resolved-IP/per-hop audit and durable usage reporting are outstanding.
+4. **P0 — policy lifecycle and independent security review remain outstanding.** There is no in-place refresh/revocation workflow or independent adversarial review. Policy expiry fails closed; use a newly reviewed task snapshot for changed scope.
+5. **P0 — proxy-aware enforcement is intentionally fail-closed.** Policy-bound WebFetch cannot use a configured proxy until the proxy enforces the same destination policy.
+6. **P1 — no unified hunting Skill or ReconFTW adapter.** These follow after the safety execution contract.
+7. **P1 — operation-level coverage and independent verification need stronger machine-checkable contracts.**
 
 ## M0 exit criteria
 
