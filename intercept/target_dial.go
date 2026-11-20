@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Autumn-27/artex/policy"
 )
 
 // The HTTP clients the platform owns (WebFetch and the custom http tool)
@@ -43,6 +45,24 @@ func PinnedDialer(toolName string, scoped bool) func(ctx context.Context, networ
 			return nil, &dialError{code: TargetGateUnavailable, target: addr, reason: "the target scope of the session did not reach the connection"}
 		case !ok:
 			return baseDial(ctx, network, addr)
+		case scope.ProgramPolicyRequired:
+			if scope.ProgramPolicy == nil || scope.ProgramPolicyError != "" {
+				reason := scope.ProgramPolicyError
+				if reason == "" {
+					reason = "the required program policy snapshot is unavailable"
+				}
+				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: reason}
+			}
+			if scope.Interceptor == nil {
+				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: "the policy-bound session has no controlled resolver or dialer"}
+			}
+			if scope.Interceptor.policyProxyConfigured(toolName) {
+				return nil, &dialError{code: policy.CodeProxyUnsupported, target: addr, reason: "proxy egress is not yet policy-aware; disable proxies or wait for policy-enforcing proxy support"}
+			}
+			if scope.Enabled != nil && scope.Enabled() {
+				return scope.Interceptor.dialTarget(ctx, scope, toolName, network, addr)
+			}
+			return scope.Interceptor.dialPolicyTarget(ctx, scope, network, addr)
 		case scope.Enabled == nil || !scope.Enabled():
 			if scope.Interceptor != nil {
 				return scope.Interceptor.baseDialer()(ctx, network, addr)
@@ -65,6 +85,57 @@ func (i *Interceptor) baseDialer() func(ctx context.Context, network, addr strin
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return i.dial
+}
+
+// policyProxyConfigured reports whether this tool's target connection may
+// be routed through a proxy whose ultimate destination ARTEX cannot verify.
+// Policy-bound requests fail closed until the proxy itself enforces ProgramPolicy.
+func (i *Interceptor) policyProxyConfigured(toolName string) bool {
+	i.mu.RLock()
+	upstream, toolProxy := i.upstreamProxy, i.toolProxy
+	i.mu.RUnlock()
+	return upstream != nil && upstream() || toolProxy != nil && toolProxy(toolName)
+}
+
+// dialPolicyTarget resolves the hostname once, checks every answer against the
+// immutable program scope, and dials only those exact checked IP addresses.
+// This path is used when the optional Target Gate is off.
+func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, network, addr string) (net.Conn, error) {
+	t, err := addrTarget(network, addr)
+	if err != nil {
+		return nil, &dialError{code: policy.CodeInvalidTarget, target: addr, reason: "the connection address could not be parsed: " + err.Error()}
+	}
+	if scope.ProgramPolicy == nil || scope.ProgramPolicyError != "" {
+		reason := scope.ProgramPolicyError
+		if reason == "" {
+			reason = "the required program policy snapshot is unavailable"
+		}
+		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: reason}
+	}
+	if decision := scope.ProgramPolicy.CheckTarget(t.Host, t.Port); !decision.Allowed {
+		return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason}
+	}
+
+	var ips []string
+	if t.Kind == TargetDomain {
+		resolved, lookupErr := i.resolve.lookup(ctx, t.Host, true)
+		if lookupErr != nil {
+			return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: "the platform could not resolve the in-scope hostname: " + lookupErr.Error()}
+		}
+		ips = resolved.ips
+	} else {
+		ips = []string{t.Host}
+	}
+	if len(ips) == 0 {
+		return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: "the platform resolver returned no addresses"}
+	}
+	for _, ip := range ips {
+		decision := scope.ProgramPolicy.CheckResolvedIP(t.Host, t.Port, ip)
+		if !decision.Allowed {
+			return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason + " (resolved address " + ip + ")"}
+		}
+	}
+	return i.dialAddrs(ctx, network, ips, t.Port)
 }
 
 // dialTarget decides one connection of a gated scope and opens it. The asset
