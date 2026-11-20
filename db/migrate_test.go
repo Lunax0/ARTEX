@@ -142,6 +142,16 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 	if len(applied) != len(want) {
 		t.Fatalf("schema_migrations = %+v, want versions 1 to 8", applied)
 	}
+	var policyColumn bool
+	if err := d.QueryRow(`SELECT EXISTS (
+		SELECT 1 FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'tasks' AND column_name = 'program_policy'
+	)`).Scan(&policyColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !policyColumn {
+		t.Fatal("tasks.program_policy column missing after Open")
+	}
 	for i, w := range want {
 		content, err := fs.ReadFile(migrationsFS(), w.name)
 		if err != nil {
