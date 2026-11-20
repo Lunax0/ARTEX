@@ -79,7 +79,7 @@ FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
 			return nil, errors.New("ProgramPolicy shared budget key was reused with different limits")
 		}
 		var now time.Time
-		if err := tx.QueryRowContext(ctx, "SELECT now()").Scan(&now); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
 			_ = tx.Rollback()
 			return nil, err
 		}
@@ -168,7 +168,7 @@ FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
 			return errors.New("ProgramPolicy shared budget key was reused with different limits")
 		}
 		var now time.Time
-		if err := tx.QueryRowContext(ctx, "SELECT now()").Scan(&now); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
