@@ -45,6 +45,7 @@ func policyGuardContext(compiled *policy.CompiledPolicy, enabled func() bool) co
 	return intercept.WithTargetScope(context.Background(), intercept.TargetScope{
 		TaskID: "77", Enabled: enabled,
 		ProgramPolicyRequired: true, ProgramPolicy: compiled,
+		ProgramPolicyCheck: func(context.Context) error { return nil },
 	})
 }
 
