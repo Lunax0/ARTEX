@@ -127,3 +127,61 @@ func TestCreateTaskRejectsInvalidProgramPolicy(t *testing.T) {
 		t.Fatalf("invalid policy accepted: %d %v", code, response)
 	}
 }
+
+func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
+	g := newGateServer(t)
+	now := time.Now().UTC()
+	source := sha256.Sum256([]byte("revocable program policy"))
+	policyInput := map[string]any{
+		"schema_version": 1,
+		"program_id": "revocation-api-test",
+		"policy_url": "https://bugcrowd.com/engagements/revocation-api-test",
+		"source_sha256": hex.EncodeToString(source[:]),
+		"in_scope": []any{map[string]any{"pattern": "app.example.com"}},
+		"expires_at": now.Add(24*time.Hour).Format(time.RFC3339Nano),
+		"limits": map[string]any{
+			"requests_per_second": 1, "burst": 1, "max_concurrency": 1,
+			"request_timeout_seconds": 30, "max_retries": 0,
+		},
+	}
+	create := func(description string) string {
+		request := map[string]any{
+			"description": description,
+			"goal": "Read-only authorized testing of app.example.com with owned accounts.",
+			"program_policy": policyInput,
+		}
+		raw, _ := json.Marshal(request)
+		code, response := g.do(t, "POST", "/api/tasks", string(raw))
+		if code != 201 {
+			t.Fatalf("create policy task: status=%d response=%v", code, response)
+		}
+		id, _ := response["id"].(string)
+		if id == "" {
+			t.Fatalf("created task has no id: %v", response)
+		}
+		g.cleanupTask(t, id)
+		return id
+	}
+	firstID := create("Revocation first task")
+	secondID := create("Revocation second task")
+
+	body, _ := json.Marshal(map[string]string{"reason": "program owner suspended the bounty"})
+	code, response := g.do(t, "POST", "/api/program-policy/task/"+firstID+"/revoke", string(body))
+	if code != 200 || response["revoked"] != true {
+		t.Fatalf("revoke policy: status=%d response=%v", code, response)
+	}
+	if response["scope"] != "all tasks using this program id and exact source digest" {
+		t.Fatalf("revocation scope not explicit: %v", response)
+	}
+	for _, id := range []string{firstID, secondID} {
+		task, ok := g.m.Task(id)
+		if !ok {
+			t.Fatalf("task %s disappeared", id)
+		}
+		ctx := intercept.WithTargetScope(context.Background(), task.targetScope(time.Second))
+		block, message, _ := task.Guard.Hooks().PreToolUse(ctx, "WebFetch", []byte(`{"url":"https://app.example.com/"}`))
+		if !block || !strings.Contains(message, policy.CodeUnavailable) {
+			t.Errorf("task %s continued after shared source revocation: block=%v message=%q", id, block, message)
+		}
+	}
+}
