@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -197,6 +198,20 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 		}
 		if decision := compiled.AllowsOperation(policy.OperationReadOnly); !decision.Allowed {
 			return block(decision.Code, decision.Reason)
+		}
+		// ExtractTargets intentionally normalizes URL schemes for general target
+		// detection. WebFetch itself is narrower: only absolute HTTP(S) URLs are
+		// valid inputs to this read-only policy path.
+		var request struct {
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(ev.Input, &request); err != nil {
+			return block(policy.CodeInvalidTarget, "WebFetch input must contain one valid HTTP(S) URL")
+		}
+		u, err := url.Parse(strings.TrimSpace(request.URL))
+		if err != nil || !u.IsAbs() || u.Opaque != "" || u.User != nil || u.Hostname() == "" ||
+			(!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+			return block(policy.CodeInvalidTarget, "WebFetch target must be an absolute HTTP(S) URL without userinfo")
 		}
 		targets := intercept.ExtractTargets(ev.ToolName, ev.Input)
 		if len(targets) != 1 {
