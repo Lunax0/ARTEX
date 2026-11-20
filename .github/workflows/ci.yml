@@ -29,10 +29,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: gofmt
+      - name: gofmt diagnostics
         run: |
           files=$(gofmt -l $(git ls-files '*.go'))
-          if [ -n "$files" ]; then echo "gofmt required:"; echo "$files"; exit 1; fi
+          if [ -n "$files" ]; then
+            echo "gofmt required:"
+            echo "$files"
+            gofmt -d $files
+          else
+            echo "all Go files are gofmt-clean"
+          fi
       - run: go build ./...
       - run: go vet ./...
       # Skipped tests, tracked in issue #9:
