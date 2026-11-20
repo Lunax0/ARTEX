@@ -154,7 +154,7 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, t
 		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: reason}
 	}
 	if decision := scope.ProgramPolicy.CheckTarget(t.Host, t.Port); !decision.Allowed {
-		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", decision.Code, decision.Reason, nil)
+		_ = auditPolicyDial(ctx, scope, toolName, t, "deny", decision.Code, decision.Reason, nil)
 		return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason}
 	}
 	if i.isDerivedEndpoint(t.Host, t.Port) {
