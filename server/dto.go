@@ -124,9 +124,12 @@ func taskDTO(t *Task, status string) TaskDTO {
 	}
 	profileIDs := append(make([]int64, 0, len(llmState.ProfileIDs)), llmState.ProfileIDs...)
 	policyDigest, policyExpiresAt := "", ""
+	policyValid := false
 	if t.ProgramPolicy != nil {
+		snapshot := t.ProgramPolicy.Snapshot()
 		policyDigest = t.ProgramPolicy.Digest()
-		policyExpiresAt = rfc3339(t.ProgramPolicy.Snapshot().ExpiresAt)
+		policyExpiresAt = rfc3339(snapshot.ExpiresAt)
+		policyValid = t.ProgramPolicyBound && t.ProgramPolicyError == "" && snapshot.ExpiresAt.After(time.Now())
 	}
 	return TaskDTO{
 		ID:                 t.ID,
@@ -157,7 +160,7 @@ func taskDTO(t *Task, status string) TaskDTO {
 		PlanQuietMode:      t.PlanQuietMode,
 		TargetGate:             t.targetGate.Load(),
 		ProgramPolicyBound:     t.ProgramPolicyBound,
-		ProgramPolicyValid:     t.ProgramPolicyBound && t.ProgramPolicy != nil && t.ProgramPolicyError == "",
+		ProgramPolicyValid:     policyValid,
 		ProgramPolicyDigest:    policyDigest,
 		ProgramPolicyExpiresAt: policyExpiresAt,
 	}
