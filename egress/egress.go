@@ -477,6 +477,19 @@ func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits poli
 		var zero T
 		return zero, errors.New("egress: ProgramPolicy request has no valid HTTP(S) target URL")
 	}
+	if scope, ok := intercept.TargetScopeFromContext(ctx); ok && scope.ProgramPolicyRequired {
+		if scope.ProgramPolicyAcquire == nil {
+			var zero T
+			return zero, errors.New("egress: shared ProgramPolicy budget is unavailable")
+		}
+		release, err := scope.ProgramPolicyAcquire(ctx, digest, limits)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		defer release()
+		return fn()
+	}
 	g, err := programGovernor(digest, limits)
 	if err != nil {
 		var zero T
