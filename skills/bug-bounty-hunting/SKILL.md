@@ -167,7 +167,7 @@ Purpose: provide broad, structured coverage without uncontrolled scanning.
 1. Build an endpoint/operation inventory from permitted sources and existing ARTEX recon capabilities.
 2. Group endpoints by function, authentication requirement, object type, and trust boundary.
 3. Select classes based on applicability: access control, authentication/session, business logic, input handling, injection, file handling, API-specific behavior, configuration/exposure, and client-side issues.
-4. Load existing ARTEX skills such as api-recon, api-security, and bbot-recon only when the required runtime tools are available and policy-authorized.
+4. Load existing ARTEX skills such as api-recon, api-security, and bbot-recon only when the required runtime tools are available and policy-authorized. For Bugcrowd reports, use artex-bugcrowd-vrt-skill when it is installed to map the evidence to the pinned VRT catalog; do not duplicate or guess its category mapping.
 5. Do not claim coverage for a tool or class that was not run.
 6. Prefer bounded representative tests and explicit applicability decisions over blind payload spraying.
 7. Use parallel workers only for independent, policy-compatible angles. Avoid concurrent tests sharing accounts, sessions, objects, or rate budgets.
@@ -300,7 +300,7 @@ A report draft must contain:
 11. Limitations, cleanup, and unverified assumptions.
 12. Duplicate-check status.
 
-Never invent a VRT category, CWE, severity, affected version, user count, or reward. If classification is uncertain, leave it unresolved and explain why. Reports are drafts for human review; never submit automatically.
+For Bugcrowd, record the VRT catalog version and evidence-backed category returned by artex-bugcrowd-vrt-skill. If no category is supported, leave it null and explain why. For other platforms, use their current taxonomy. Never invent a VRT category, CWE, severity, affected version, user count, or reward. If classification is uncertain, leave it unresolved and explain why. Reports are drafts for human review; never submit automatically.
 
 ## 7. Handoff and completion format
 
