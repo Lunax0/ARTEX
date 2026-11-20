@@ -1498,7 +1498,7 @@ export interface JudgeUsage {
 
 export interface InterceptApprovalFilter {
   status?: InterceptPending["status"];
-  decision_source?: "rule" | "model" | "unknown";
+  decision_source?: "rule" | "model" | "program_policy" | "unknown";
   decided_by?: "human" | "rule" | "model" | "system";
 }
 
