@@ -138,9 +138,9 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 		name    string
 	}{{1, llmRecordsMigration}, {2, llmUsageMigration}, {3, "0003_task_scope_icp_index.sql"}, {4, "0004_llm_usage_ts_index.sql"},
 		{5, "0005_traffic_rewrite_rules.sql"}, {6, "0006_activity_outbox.sql"}, {7, "0007_finding_report_state.sql"},
-		{8, "0008_task_program_policy.sql"}, {9, "0009_program_policy_events.sql"}, {10, "0010_program_policy_shared_budget.sql"}, {11, "0011_program_policy_revocations.sql"}}
+		{8, "0008_task_program_policy.sql"}, {9, "0009_program_policy_events.sql"}, {10, "0010_program_policy_shared_budget.sql"}, {11, "0011_program_policy_revocations.sql"}, {12, "0012_program_policy_network_audit.sql"}}
 	if len(applied) != len(want) {
-		t.Fatalf("schema_migrations = %+v, want versions 1 to 11", applied)
+		t.Fatalf("schema_migrations = %+v, want versions 1 to 12", applied)
 	}
 	var policyColumn bool
 	if err := d.QueryRow(`SELECT EXISTS (
@@ -165,6 +165,13 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 	}
 	if !policyRevocationsTable {
 		t.Fatal("program_policy_revocations table missing after Open")
+	}
+	var eventPhaseColumn bool
+	if err := d.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='program_policy_events' AND column_name='event_phase')").Scan(&eventPhaseColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !eventPhaseColumn {
+		t.Fatal("program_policy_events.event_phase column missing after Open")
 	}
 	var policyBudgetStateTable, policyBudgetLeasesTable bool
 	if err := d.QueryRow(`SELECT to_regclass('program_policy_budget_state') IS NOT NULL`).Scan(&policyBudgetStateTable); err != nil {
