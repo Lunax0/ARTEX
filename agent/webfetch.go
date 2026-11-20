@@ -62,10 +62,15 @@ func (f governedFetch) Call(ctx context.Context, input json.RawMessage, tc *acto
 		if scope.ProgramPolicy == nil || scope.ProgramPolicyError != "" {
 			return actool.Errorf("ARTEX policy control: the required Bug Bounty policy is unavailable; request blocked"), nil
 		}
-		limits := scope.ProgramPolicy.Snapshot().Limits
+		snapshot := scope.ProgramPolicy.Snapshot()
+		limits := snapshot.Limits
 		bounded, cancel := context.WithTimeout(ctx, time.Duration(limits.RequestTimeoutSecond)*time.Second)
 		defer cancel()
-		return egress.PolicyDo(bounded, u, scope.ProgramPolicy.Digest(), limits, func() (actool.Result, error) {
+		// Approval timestamps differ between tasks. Key the shared budget by
+		// program identity and the exact reviewed source, not the compiled
+		// snapshot digest, so parallel tasks for one program share one budget.
+		budgetKey := snapshot.ProgramID + ":" + snapshot.SourceSHA256
+		return egress.PolicyDo(bounded, u, budgetKey, limits, func() (actool.Result, error) {
 			return f.CoreTool.Call(bounded, input, tc)
 		})
 	}
