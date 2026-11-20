@@ -34,10 +34,9 @@ var baseDial = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Seco
 // the rendered-URL gate and the redirect policy read.
 //
 // scoped is whether the client was built for a session with a target scope.
-// Such a client never dials without one: a scope missing at the dial means the
-// context value was lost on the way, and the dial fails with
-// TARGET_GATE_UNAVAILABLE. A client built without a scope (the operator's test
-// endpoint) dials as before, and so does every client while the gate is off.
+// Such a client never dials without one. Policy-bound scopes are always
+// checked, whether or not the optional Target Gate is enabled; legacy scopes
+// retain the previous direct-dial behavior when the gate is off.
 func PinnedDialer(toolName string, scoped bool) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		scope, ok := TargetScopeFromContext(ctx)
