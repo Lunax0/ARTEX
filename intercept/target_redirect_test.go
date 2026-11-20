@@ -2,6 +2,7 @@ package intercept
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -305,5 +306,29 @@ func TestProgramPolicyRedirectFailsClosedWhenBudgetWaitFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
 		!strings.Contains(err.Error(), "deadline exceeded") || !strings.Contains(err.Error(), "not followed") {
 		t.Fatalf("redirect after failed budget wait was not blocked: %v", err)
+	}
+}
+
+func TestProgramPolicyRedirectStopsWhenSourceIsRevoked(t *testing.T) {
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error {
+			return errors.New("approved policy source has been revoked")
+		},
+	}
+	var charged []string
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(_ context.Context, rawURL string) error {
+		charged = append(charged, rawURL)
+		return nil
+	})
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("revoked policy redirect was not blocked: %v", err)
+	}
+	if len(charged) != 0 {
+		t.Fatalf("revoked redirect consumed a request token: %v", charged)
 	}
 }
