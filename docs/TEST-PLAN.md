@@ -1,6 +1,6 @@
 # ARTEX Test Plan
 
-Status: Current PR #1 workflow run #59 (44777060032): Go stable serial tests, Web, Shell and Python jobs passed; Go race tests remain in progress. Local reproduction, fuzz/security review, migration rollback testing and benchmark reproduction remain outstanding.
+Status: Verify the latest PR #1 CI run for the current branch head before release. Local reproduction, fuzz/security review, migration rollback testing and benchmark reproduction remain outstanding.
 Baseline: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
 
 ## 1. Baseline reproduction
@@ -37,10 +37,13 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 ### ProgramPolicy audit tests
 
 - `db/intercept_decided_by_test.go`: verify ProgramPolicy decisions persist with `decision_source=program_policy`, `decided_by=system`, sanitized target-only input, policy digest metadata, history detail retrieval and combined filters.
-- `db/program_policy_events_test.go`: verify dedicated event persistence, bounded retrieval, validation and rejection of UPDATE/DELETE/TRUNCATE.
+- `db/program_policy_events_test.go`: verify dedicated event persistence, bounded retrieval, validation and rejection of malformed target authorities. The event table currently has application-level insert/list/get APIs, not database-enforced immutability.
+- `db/program_policy_revocations_test.go`: verify immutable first revocation attestation, exact-source lookup, idempotency and validation.
+- `server/program_policy_test.go`: verify authenticated revocation API and that revoking one source disables every task sharing the same program ID + source digest.
+- Guard, redirect and dial paths recheck revocation state; missing or unavailable revocation checks fail closed.
 - `db/program_policy_budget_test.go`: verify PostgreSQL-backed rate/concurrency sharing across independent DB handles, redirect token charging and cancellation.
 - Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate; allowed requests fail closed if the durable event ledger is unavailable.
-- Latest current-head CI run #59 has these Go stable serial tests in progress; the previous run #56 passed the Go stable suite before the final audit-failure behavior change.
+- Latest current-head CI results are tracked in GitHub Actions; no earlier passing run substitutes for the current head.
 
 ### Policy compilation and task binding
 - Reject malformed policy URL/domain/CIDR, wildcard overreach, invalid rate/concurrency, empty scope, malformed source digest and unknown policy versions.
