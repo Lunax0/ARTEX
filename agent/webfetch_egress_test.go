@@ -111,6 +111,15 @@ func TestPolicyBoundWebFetchChargesRedirect(t *testing.T) {
 	// A unique policy source keeps this test's process-wide budget isolated.
 	ctx := intercept.WithTargetScope(t.Context(), intercept.TargetScope{
 		TaskID: "webfetch-redirect-budget-test", ProgramPolicyRequired: true, ProgramPolicy: compiled,
+		ProgramPolicyAcquire: func(ctx context.Context, key string, limits policy.Limits) (func(), error) {
+			if err := egress.PolicyWait(ctx, key, limits); err != nil {
+				return nil, err
+			}
+			return func() {}, nil
+		},
+		ProgramPolicyWait: func(ctx context.Context, key string, limits policy.Limits) error {
+			return egress.PolicyWait(ctx, key, limits)
+		},
 	})
 	inner := actool.NewWebFetch(actool.WebFetchConfig{CheckRedirect: intercept.RedirectCheck("WebFetch")})
 	tool := governedFetch{inner}
