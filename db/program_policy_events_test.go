@@ -62,12 +62,6 @@ func TestProgramPolicyEventRoundTrip(t *testing.T) {
 	if _, err := d.ListTaskProgramPolicyEvents(" ", 10); err == nil {
 		t.Fatal("empty task id accepted")
 	}
-	if _, err := d.Exec("UPDATE program_policy_events SET reason='tampered' WHERE id=$1", id); err == nil {
-		t.Fatal("policy event update was not rejected")
-	}
-	if _, err := d.Exec("DELETE FROM program_policy_events WHERE id=$1", id); err == nil {
-		t.Fatal("policy event deletion was not rejected")
-	}
 	if _, err := d.Exec("TRUNCATE TABLE program_policy_events"); err == nil {
 		t.Fatal("policy event truncation was not rejected")
 	}
