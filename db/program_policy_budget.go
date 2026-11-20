@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/Autumn-27/artex/policy"
@@ -110,17 +111,13 @@ FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
 			if err := tx.Commit(); err != nil {
 				return nil, err
 			}
-			var released bool
+			var once sync.Once
 			return func() {
-				// The closure is called once by the request path; the database
-				// deletion is idempotent if a caller defensively invokes it twice.
-				if released {
-					return
-				}
-				released = true
-				releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_, _ = d.ExecContext(releaseCtx, "DELETE FROM program_policy_budget_leases WHERE id=$1", leaseID)
+				once.Do(func() {
+					releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					_, _ = d.ExecContext(releaseCtx, "DELETE FROM program_policy_budget_leases WHERE id=$1", leaseID)
+				})
 			}, nil
 		}
 		wait := 100 * time.Millisecond
