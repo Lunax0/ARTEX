@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -84,19 +85,23 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 		}
 		e.PolicyDigest = strings.ToLower(e.PolicyDigest)
 	}
+	resolvedIPsJSON, err := json.Marshal(e.ResolvedIPs)
+	if err != nil {
+		return 0, fmt.Errorf("encode ProgramPolicy resolved IPs: %w", err)
+	}
 	var conversationID any
 	if e.ConversationID != nil && *e.ConversationID > 0 {
 		conversationID = *e.ConversationID
 	}
 	var id int64
-	err := d.QueryRow(`
+	err = d.QueryRow(`
 INSERT INTO program_policy_events
     (task_id, conversation_id, agent_name, tool_name, decision_code, action,
      event_phase, target_authority, resolved_ips, policy_digest, execution_status, reason, actor)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'system')
 RETURNING id`,
 		e.TaskID, conversationID, e.AgentName, e.ToolName, e.DecisionCode,
-		e.Action, e.EventPhase, e.TargetAuthority, e.ResolvedIPs, e.PolicyDigest, e.ExecutionStatus, e.Reason,
+		e.Action, e.EventPhase, e.TargetAuthority, string(resolvedIPsJSON), e.PolicyDigest, e.ExecutionStatus, e.Reason,
 	).Scan(&id)
 	return id, err
 }
@@ -126,10 +131,14 @@ FROM program_policy_events WHERE task_id=$1 ORDER BY created_at DESC, id DESC LI
 	out := make([]ProgramPolicyEvent, 0)
 	for rows.Next() {
 		var e ProgramPolicyEvent
+		var resolvedIPsJSON []byte
 		if err := rows.Scan(&e.ID, &e.TaskID, &e.ConversationID, &e.AgentName,
-			&e.ToolName, &e.DecisionCode, &e.Action, &e.EventPhase, &e.TargetAuthority, &e.ResolvedIPs,
+			&e.ToolName, &e.DecisionCode, &e.Action, &e.EventPhase, &e.TargetAuthority, &resolvedIPsJSON,
 			&e.PolicyDigest, &e.ExecutionStatus, &e.Reason, &e.Actor, &e.CreatedAt); err != nil {
 			return nil, err
+		}
+		if err := json.Unmarshal(resolvedIPsJSON, &e.ResolvedIPs); err != nil {
+			return nil, fmt.Errorf("decode ProgramPolicy resolved IPs: %w", err)
 		}
 		out = append(out, e)
 	}
@@ -139,15 +148,19 @@ FROM program_policy_events WHERE task_id=$1 ORDER BY created_at DESC, id DESC LI
 // GetProgramPolicyEvent returns one event, or nil when it does not exist.
 func (d *DB) GetProgramPolicyEvent(id int64) (*ProgramPolicyEvent, error) {
 	var e ProgramPolicyEvent
+	var resolvedIPsJSON []byte
 	err := d.QueryRow(`SELECT `+programPolicyEventColumns+` FROM program_policy_events WHERE id=$1`, id).
 		Scan(&e.ID, &e.TaskID, &e.ConversationID, &e.AgentName, &e.ToolName,
-			&e.DecisionCode, &e.Action, &e.EventPhase, &e.TargetAuthority, &e.ResolvedIPs, &e.PolicyDigest,
+			&e.DecisionCode, &e.Action, &e.EventPhase, &e.TargetAuthority, &resolvedIPsJSON, &e.PolicyDigest,
 			&e.ExecutionStatus, &e.Reason, &e.Actor, &e.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal(resolvedIPsJSON, &e.ResolvedIPs); err != nil {
+		return nil, fmt.Errorf("decode ProgramPolicy resolved IPs: %w", err)
 	}
 	return &e, nil
 }
