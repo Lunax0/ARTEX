@@ -471,6 +471,7 @@ func programGovernor(digest string, limits policy.Limits) (*Governor, error) {
 // each additional followed hop with PolicyWait while this slot remains held.
 // These limits are mandatory even when the optional noise profile is off.
 func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits policy.Limits, fn func() (T, error)) (T, error) {
+	digest = strings.TrimSpace(digest)
 	if u == nil || u.Host == "" || u.User != nil ||
 		(!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
 		var zero T
@@ -494,6 +495,7 @@ func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits poli
 // token bucket. It is intended for redirect hops inside a PolicyDo invocation:
 // the outer invocation already holds the program concurrency slot.
 func PolicyWait(ctx context.Context, digest string, limits policy.Limits) error {
+	digest = strings.TrimSpace(digest)
 	g, err := programGovernor(digest, limits)
 	if err != nil {
 		return err
