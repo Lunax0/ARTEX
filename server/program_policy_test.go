@@ -65,6 +65,10 @@ func TestCreateTaskApprovesAndPersistsProgramPolicy(t *testing.T) {
 		response["program_policy_digest"] == "" {
 		t.Fatalf("policy metadata missing from response: %v", response)
 	}
+	statusCode, statusResponse := g.do(t, "GET", "/api/program-policy/task/"+id+"/status", "")
+	if statusCode != 200 || statusResponse["active"] != true || statusResponse["revoked"] != false || statusResponse["expired"] != false {
+		t.Fatalf("active policy status not reported: status=%d response=%v", statusCode, statusResponse)
+	}
 
 	taskID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
