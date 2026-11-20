@@ -853,7 +853,19 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 	if taskID == "" {
 		return
 	}
-	audit := auditFor(ctx, dec, safeInput, status)
+	executionStatus := "not_executed"
+	if status == "allowed" {
+		executionStatus = "awaiting_result"
+	}
+	// Do not attach user-message/history context to policy decisions. This
+	// record intentionally contains only the policy decision metadata and the
+	// caller-supplied sanitized target authority.
+	audit := &db.InterceptAudit{
+		CapturedAt: time.Now().UTC(), InitialAction: dec.Action,
+		InitialReason: dec.Message, EffectiveAction: dec.Action,
+		DecisionReason: dec.Message, ConfigDigest: dec.ConfigDigest,
+		ExecutionStatus: executionStatus,
+	}
 	id, err := i.db.CreateProgramPolicyDecision(convID, taskID, agentName, toolName, safeInput, status, dec.Message, audit)
 	if err == nil {
 		i.bindResult(ctx, id, audit)
