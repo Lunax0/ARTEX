@@ -85,12 +85,11 @@ type targetScopeCtxKey struct{}
 // decision on an unpinned target before it fails with the request left open.
 const DefaultTargetWaitBound = 300 * time.Second
 
-// TargetScope is what an approval for an asset target is bound to: one task
-// (TaskID) or one conversation (ConversationID), never both. Enabled reports the
-// scope's opt-in flag and is read on every gated call; nil means the gate is off.
-// WaitBound caps the wait for a human decision; 0 means never wait.
-// Interceptor is the one that owns the gate of this session, so that code
-// holding only a context (an HTTP redirect callback) can reach it.
+// TargetScope carries the per-session target controls: an optional human
+// approval gate and, for Bug Bounty tasks, an unconditional ProgramPolicy.
+// Enabled reports the gate's opt-in flag; nil means the gate is off. WaitBound
+// caps a human decision wait; 0 means never wait. Interceptor owns the gate and
+// its controlled resolver/dialer, so redirect and dial callbacks can reach it.
 type TargetScope struct {
 	TaskID         string
 	ConversationID int64
