@@ -50,7 +50,7 @@ Normalization:
 - IP literals are canonicalized; IPv4-mapped IPv6 literals are unmapped.
 - Ambiguous numeric host notation, zone-scoped IPs, URLs, paths, userinfo, commands and unsupported wildcard forms are rejected.
 - Wildcards match subdomains only, not their apex. A wildcard cannot target a public suffix (for example `*.com` or `*.co.uk`), but a wildcard below a registrable domain (for example `*.staging.example.com`) is valid.
-- Empty `ports` means the reviewed policy did not constrain ports. A non-empty `ports` list is an explicit allow-list. Unknown port (0) cannot pass a port-restricted rule.
+- In-scope rules with omitted `ports` default to HTTP/HTTPS ports 80 and 443; other ports must be explicitly listed. Out-of-scope rules with omitted `ports` exclude every port. A non-empty `ports` list is an explicit allow-list/exclusion list. Unknown port (0) cannot pass a port-restricted rule.
 - Every explicit out-of-scope rule takes precedence over every in-scope rule.
 
 Schema v1 is host/IP/CIDR based. It does not yet model path-level inclusions/exclusions, scheme-specific asset rules, account ownership, data classes, or program-specific test categories.
