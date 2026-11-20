@@ -2,8 +2,8 @@ package guard
 
 import (
 	"context"
-	"errors"
 	"crypto/sha256"
+	"errors"
 	"encoding/hex"
 	"strings"
 	"testing"
