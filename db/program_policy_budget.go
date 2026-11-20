@@ -154,17 +154,17 @@ func (d *DB) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits
 			return err
 		}
 		var rps, tokens float64
-		var burst, requestTimeout, maxRetries int
+		var burst, maxConcurrency, requestTimeout, maxRetries int
 		var refilledAt time.Time
 		err = tx.QueryRowContext(ctx, `
-SELECT requests_per_second, burst, request_timeout_seconds, max_retries, tokens, refilled_at
+SELECT requests_per_second, burst, max_concurrency, request_timeout_seconds, max_retries, tokens, refilled_at
 FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
-			Scan(&rps, &burst, &requestTimeout, &maxRetries, &tokens, &refilledAt)
+			Scan(&rps, &burst, &maxConcurrency, &requestTimeout, &maxRetries, &tokens, &refilledAt)
 		if err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("ProgramPolicy budget state unavailable: %w", err)
 		}
-		if rps != limits.RequestsPerSecond || burst != limits.Burst || requestTimeout != limits.RequestTimeoutSecond || maxRetries != limits.MaxRetries {
+		if rps != limits.RequestsPerSecond || burst != limits.Burst || maxConcurrency != limits.MaxConcurrency || requestTimeout != limits.RequestTimeoutSecond || maxRetries != limits.MaxRetries {
 			_ = tx.Rollback()
 			return errors.New("ProgramPolicy shared budget key was reused with different limits")
 		}
