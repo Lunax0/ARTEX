@@ -159,6 +159,16 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 	if !policyEventsTable {
 		t.Fatal("program_policy_events table missing after Open")
 	}
+	var policyBudgetStateTable, policyBudgetLeasesTable bool
+	if err := d.QueryRow(`SELECT to_regclass('program_policy_budget_state') IS NOT NULL`).Scan(&policyBudgetStateTable); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.QueryRow(`SELECT to_regclass('program_policy_budget_leases') IS NOT NULL`).Scan(&policyBudgetLeasesTable); err != nil {
+		t.Fatal(err)
+	}
+	if !policyBudgetStateTable || !policyBudgetLeasesTable {
+		t.Fatalf("ProgramPolicy shared budget tables missing: state=%v leases=%v", policyBudgetStateTable, policyBudgetLeasesTable)
+	}
 	for i, w := range want {
 		content, err := fs.ReadFile(migrationsFS(), w.name)
 		if err != nil {
