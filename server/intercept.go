@@ -321,6 +321,41 @@ func (s *Server) interceptListTaskItems(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "page_size": size})
 }
 
+// programPolicyTaskEvents returns the sanitized, append-only ProgramPolicy decision ledger for one task.
+func (s *Server) programPolicyTaskEvents(w http.ResponseWriter, r *http.Request) {
+	pg := s.pg(w)
+	if pg == nil {
+		return
+	}
+	taskID := strings.TrimSpace(r.PathValue("taskID"))
+	if taskID == "" {
+		writeErr(w, http.StatusBadRequest, "bad task id")
+		return
+	}
+	if _, ok := s.m.Task(taskID); !ok {
+		writeErr(w, http.StatusNotFound, "task not found")
+		return
+	}
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeErr(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = min(parsed, 500)
+	}
+	items, err := pg.ListTaskProgramPolicyEvents(taskID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "ProgramPolicy event history query failed")
+		return
+	}
+	if items == nil {
+		items = []db.ProgramPolicyEvent{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
 func (s *Server) interceptHistory(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
 	if pg == nil {
