@@ -542,6 +542,9 @@ func TestPinUsedRecordsEffectiveNameOnly(t *testing.T) {
 
 func compiledDialPolicy(t *testing.T) *policy.CompiledPolicy {
 	t.Helper()
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		t.Setenv(key, "")
+	}
 	now := time.Now().UTC()
 	sum := sha256.Sum256([]byte("dial policy source"))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
