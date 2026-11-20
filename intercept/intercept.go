@@ -867,9 +867,9 @@ func (i *Interceptor) Log(ctx context.Context, convID int64, dec Decision, toolN
 // LogProgramPolicy records a mandatory ProgramPolicy allow/deny decision
 // with explicit system provenance. The supplied input must already be
 // sanitized; callers must not persist credentials, cookies or raw query data.
-func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec Decision, toolName string, safeInput []byte, status string) {
+func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec Decision, toolName string, safeInput []byte, status string) error {
 	if i.db == nil {
-		return
+		return errors.New("ProgramPolicy audit database is unavailable")
 	}
 	taskID, agentName := taskInfoFromCtx(ctx)
 	if taskID == "" {
@@ -878,7 +878,7 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 		}
 	}
 	if taskID == "" {
-		return
+		return errors.New("ProgramPolicy audit requires task context")
 	}
 	executionStatus := "not_executed"
 	if status == "allowed" {
@@ -921,14 +921,16 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 		ExecutionStatus: executionStatus, Reason: dec.Message,
 	})
 	if eventErr != nil {
-		// The mandatory Guard decision is already made. Audit failure is visible
-		// in server logs but must never turn a deny into an allow or vice versa.
 		log.Printf("[program-policy] durable event write failed task=%s tool=%s: %v", taskID, toolName, eventErr)
+		return eventErr
 	}
 	id, err := i.db.CreateProgramPolicyDecision(convID, taskID, agentName, toolName, safeInput, status, dec.Message, audit)
-	if err == nil {
+	if err != nil {
+		log.Printf("[program-policy] approval history write failed task=%s tool=%s: %v", taskID, toolName, err)
+	} else {
 		i.bindResult(ctx, id, audit)
 	}
+	return nil
 }
 
 // HandleAsk creates a pending approval record and blocks until the user decides
