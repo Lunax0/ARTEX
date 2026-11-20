@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"slices"
 	"testing"
 )
@@ -194,8 +195,12 @@ func TestProgramPolicyDecisionHasExplicitSystemProvenance(t *testing.T) {
 	if row.Status != "denied" || row.DecisionSource != "program_policy" || row.DecidedBy != "system" {
 		t.Fatalf("wrong policy decision provenance: %+v", row)
 	}
-	if string(row.ToolInput) != string(input) {
-		t.Fatalf("stored sanitized input = %s, want %s", row.ToolInput, input)
+	var storedInput map[string]string
+	if err := json.Unmarshal(row.ToolInput, &storedInput); err != nil {
+		t.Fatalf("decode stored sanitized input %s: %v", row.ToolInput, err)
+	}
+	if storedInput["target"] != "api.example.com:443" || len(storedInput) != 1 {
+		t.Fatalf("stored sanitized input = %s, want only target authority", row.ToolInput)
 	}
 
 	detail, err := d.GetInterceptDetail(id)
