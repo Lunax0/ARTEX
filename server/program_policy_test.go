@@ -173,6 +173,19 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 	if response["scope"] != "all tasks using this program id and exact source digest" {
 		t.Fatalf("revocation scope not explicit: %v", response)
 	}
+	t.Cleanup(func() {
+		_, _ = g.m.PG().Exec("DELETE FROM program_policy_revocations WHERE program_id=$1 AND source_sha256=$2", "revocation-api-test", hex.EncodeToString(source[:]))
+	})
+	reuseRequest := map[string]any{
+		"description": "Attempt to reuse revoked policy source",
+		"goal": "Read-only authorized testing of app.example.com with owned accounts.",
+		"program_policy": policyInput,
+	}
+	reuseRaw, _ := json.Marshal(reuseRequest)
+	reuseCode, reuseResponse := g.do(t, "POST", "/api/tasks", string(reuseRaw))
+	if reuseCode != 409 {
+		t.Fatalf("revoked policy source was accepted for a new task: status=%d response=%v", reuseCode, reuseResponse)
+	}
 	for _, id := range []string{firstID, secondID} {
 		task, ok := g.m.Task(id)
 		if !ok {
