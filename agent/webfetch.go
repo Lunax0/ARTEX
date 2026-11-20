@@ -3,7 +3,11 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Autumn-27/artex/egress"
@@ -35,6 +39,82 @@ func withWebFetch(ctx context.Context, tools []actool.CoreTool, proxy, caCert st
 // egressGovernor resolves the governor of a WebFetch call, once per call so a
 // changed noise profile applies to the next call; a test may pin it.
 var egressGovernor = egress.Current
+
+func retryablePolicyHTTPStatus(result actool.Result) (int, bool) {
+	if result.IsError {
+		return 0, false
+	}
+	line := strings.TrimSpace(strings.SplitN(result.Flatten(), "\n", 2)[0])
+	if strings.HasPrefix(line, "[429 ") {
+		return http.StatusTooManyRequests, true
+	}
+	if strings.HasPrefix(line, "[503 ") {
+		return http.StatusServiceUnavailable, true
+	}
+	return 0, false
+}
+
+func policyAuditAuthority(u *url.URL) string {
+	host := u.Hostname()
+	port := u.Port()
+	if port == "" {
+		if strings.EqualFold(u.Scheme, "https") {
+			port = strconv.Itoa(443)
+		} else {
+			port = strconv.Itoa(80)
+		}
+	}
+	return net.JoinHostPort(host, port)
+}
+
+func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, input json.RawMessage, tc *actool.ToolContext, scope intercept.TargetScope, budgetKey string, limits policy.Limits, targetURL *url.URL) (actool.Result, error) {
+	result, err := f.CoreTool.Call(budgetCtx, input, tc)
+	if err != nil {
+		return result, err
+	}
+	for attempt := 1; attempt <= limits.MaxRetries; attempt++ {
+		status, retry := retryablePolicyHTTPStatus(result)
+		if !retry {
+			break
+		}
+		if scope.ProgramPolicyCheck == nil {
+			return actool.Errorf("ARTEX policy control: policy revocation check is unavailable; retry blocked"), nil
+		}
+		if err := scope.ProgramPolicyCheck(ctx); err != nil {
+			return actool.Errorf("ARTEX policy control: %v; retry blocked", err), nil
+		}
+		if scope.ProgramPolicyWait == nil {
+			return actool.Errorf("ARTEX policy control: shared request budget is unavailable; retry blocked"), nil
+		}
+		if err := scope.ProgramPolicyWait(ctx, budgetKey, limits); err != nil {
+			return actool.Errorf("ARTEX policy control: retry budget unavailable: " + err.Error()), nil
+		}
+		shift := min(attempt-1, 3)
+		delay := time.Duration(1<<shift) * 250 * time.Millisecond
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return actool.Errorf("ARTEX policy control: request cancelled during retry backoff"), nil
+		case <-timer.C:
+		}
+		if err := scope.ProgramPolicyCheck(ctx); err != nil {
+			return actool.Errorf("ARTEX policy control: %v; retry blocked", err), nil
+		}
+		if scope.ProgramPolicyAudit == nil {
+			return actool.Errorf("ARTEX policy control: retry audit writer is unavailable; retry blocked"), nil
+		}
+		reason := fmt.Sprintf("retrying HTTP %d response after bounded backoff (attempt %d of %d)", status, attempt, limits.MaxRetries)
+		if err := scope.ProgramPolicyAudit(ctx, "retry", "WebFetch.Retry", policyAuditAuthority(targetURL), "allow", policy.CodeAllowed, reason, nil); err != nil {
+			return actool.Errorf("ARTEX policy control: retry audit could not be persisted; retry blocked"), nil
+		}
+		result, err = f.CoreTool.Call(budgetCtx, input, tc)
+		if err != nil {
+			return result, err
+		}
+	}
+	return result, nil
+}
 
 // governedFetch runs each WebFetch call as one send under the egress governor
 // (off by default; then the call runs unchanged). Under a noise profile it
@@ -77,7 +157,7 @@ func (f governedFetch) Call(ctx context.Context, input json.RawMessage, tc *acto
 			return scope.ProgramPolicyWait(waitCtx, budgetKey, limits)
 		})
 		return egress.PolicyDo(bounded, u, budgetKey, limits, func() (actool.Result, error) {
-			return f.CoreTool.Call(budgetCtx, input, tc)
+			return f.callWithPolicyRetries(bounded, budgetCtx, input, tc, scope, budgetKey, limits, u)
 		})
 	}
 	return egress.Do(egressGovernor(), ctx, u, func() (actool.Result, error) {
