@@ -42,6 +42,14 @@ var noTargetTools = toolSet(
 	"traffic_search", "traffic_get", "traffic_blob", "traffic_messages",
 )
 
+// IsKnownNoTargetTool reports whether toolName is in the explicit allowlist of
+// tools whose inputs do not represent target network activity. It is used by
+// policy-bound guards to permit only known platform/internal tools; unknown
+// tools, MCP, custom tools and deferred execution are not implicitly trusted.
+func IsKnownNoTargetTool(toolName string) bool {
+	return noTargetTools[toolName] && toolName != executeExtraTool
+}
+
 func toolSet(names ...string) map[string]bool {
 	m := make(map[string]bool, len(names))
 	for _, n := range names {
