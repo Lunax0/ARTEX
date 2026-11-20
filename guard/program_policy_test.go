@@ -49,8 +49,8 @@ func policyGuardContext(compiled *policy.CompiledPolicy, enabled func() bool) co
 }
 
 func callPolicyGuard(g *Guard, ctx context.Context, tool, input string) (bool, string) {
-	res := g.Hooks().PreToolUse(ctx, tool, []byte(input))
-	return res.Decision == "block", res.Message
+	block, message, _ := g.Hooks().PreToolUse(ctx, tool, []byte(input))
+	return block, message
 }
 
 func TestProgramPolicyAppliesWhenTargetGateIsOff(t *testing.T) {
