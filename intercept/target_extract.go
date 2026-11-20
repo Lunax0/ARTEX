@@ -47,7 +47,17 @@ var noTargetTools = toolSet(
 // policy-bound guards to permit only known platform/internal tools; unknown
 // tools, MCP, custom tools and deferred execution are not implicitly trusted.
 func IsKnownNoTargetTool(toolName string) bool {
-	return noTargetTools[toolName] && toolName != executeExtraTool
+	if !noTargetTools[toolName] {
+		return false
+	}
+	switch toolName {
+	case executeExtraTool, "spawn_task", "create_skill", "update_skill_file", "delete_assets_by_host":
+		// These mutate global/platform state or create a child execution context
+		// that would need its own inherited, enforced policy snapshot.
+		return false
+	default:
+		return true
+	}
 }
 
 func toolSet(names ...string) map[string]bool {
