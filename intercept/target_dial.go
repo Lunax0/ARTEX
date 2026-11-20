@@ -159,7 +159,7 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, t
 	}
 	if i.isDerivedEndpoint(t.Host, t.Port) {
 		reason := "this connection is routed to a platform-derived service/proxy endpoint whose ultimate egress destination is not controlled by ProgramPolicy"
-		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeProxyUnsupported, reason, nil)
+		_ = auditPolicyDial(ctx, scope, toolName, t, "deny", policy.CodeProxyUnsupported, reason, nil)
 		return nil, &dialError{code: policy.CodeProxyUnsupported, target: t.String(), reason: reason}
 	}
 
