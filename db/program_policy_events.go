@@ -52,7 +52,7 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	if e.TargetAuthority != "" {
 		host, portText, err := net.SplitHostPort(e.TargetAuthority)
 		port, portErr := strconv.Atoi(portText)
-		if err != nil || host == "" || portErr != nil || port < 1 || port > 65535 || strings.ContainsAny(host, "/?#@ ") {
+		if err != nil || host == "" || portErr != nil || port < 1 || port > 65535 || strings.ContainsAny(host, "/?#@ \\t\\r\\n") {
 			return 0, errors.New("ProgramPolicy target authority must be a host:port pair without URL data")
 		}
 	}
