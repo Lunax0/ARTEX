@@ -1,6 +1,6 @@
 # ARTEX Development Decisions
 
-Status: M0 baseline audit in progress  
+Status: M0 baseline audit completed; M1 ProgramPolicy implementation in progress  
 Date: 2026-11-20  
 Repository: `Lunax0/ARTEX`  
 Upstream: `BaaRai/ARTEX`
@@ -38,18 +38,20 @@ Track technical verification separately from platform outcomes:
 
 ## 4. Current branch and change policy
 
-- M0 branch: `dev/m0-baseline-audit`
+- Current development branch: `dev/m0-baseline-audit` (contains the frozen audit artifacts plus the initial M1 ProgramPolicy work).
 - Frozen parent: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
-- No production behavior changes are authorized in M0.
-- Each subsequent change must have a narrowly scoped issue/PR, a failing test or baseline first, implementation, CI, regression checks, and a rollback path.
+- The fork's `main` remains untouched; all changes are isolated in Draft PR #1.
+- Each subsequent change must remain narrowly scoped, include negative tests, pass CI, and have a rollback path.
+- Do not merge the Draft PR until the pinned Go build, unit/integration suites, race tests and security review pass.
 - Upstream synchronization is a separate change, never mixed with feature work.
 
 ## 5. M0 findings that affect sequencing
 
 - `db/task_scope.go` explicitly describes TaskScope as a coverage/query scope, not an execution boundary.
-- `target_gate` is opt-in and new tasks default to it being off.
-- `intercept/target_extract.go` documents that target extraction inspects declared tool input; it cannot prevent undeclared connections.
-- The target gate and target pins are useful approval controls, but are not equivalent to a machine-compiled program allow/deny policy enforced at every network egress.
+- `target_gate` remains opt-in and new tasks default to it being off.
+- `intercept/target_extract.go` documents that target extraction inspects declared tool input; it cannot prevent undeclared connections by itself.
+- The first ProgramPolicy runtime slice now binds reviewed snapshots to tasks, enforces WebFetch host/port scope, redirects and DNS-resolved dial IPs, and blocks unclassified network tools for policy-bound tasks.
+- The Target Gate and pins remain additional approval controls, not substitutes for ProgramPolicy.
 - `egress` pacing applies to platform-owned HTTP clients; `.env.example` explicitly states Bash-launched tools are not throttled.
 - Coverage ledger, finding evidence checks, retesting, BBOT ingestion, skills, and L3 benchmark infrastructure already exist and should be extended rather than replaced.
 - The current CI run on the frozen upstream commit succeeded, but no benchmark result artifact was found in the repository. Local baseline execution remains pending.
@@ -57,11 +59,12 @@ Track technical verification separately from platform outcomes:
 ## 6. Priority order
 
 1. D00: complete source audit, baseline and gap matrix.
-2. D01: define a machine-readable `ProgramPolicy` and negative test fixtures.
-   - Initial implementation exists in `policy/program.go` and `policy/program_test.go`.
-   - It is an isolated compiler/matcher only; task persistence, runtime enforcement and test execution remain outstanding.
+2. D01: define and persist a machine-readable `ProgramPolicy`.
+   - Compiler/matcher: `policy/program.go`, `policy/program_test.go`.
+   - Task JSONB persistence, server-stamped approval, task reload compilation and Guard binding now exist.
+   - Runtime enforcement currently covers WebFetch, redirects and direct DNS/socket egress; policy-bound Bash/shell/MCP/custom/unknown tools are blocked.
    - Contract and limitations: `docs/M1-POLICY-COMPILER.md`.
-3. D02: enforce Scope/Network/Side-effect policy at all egress paths, fail closed.
+3. D02: finish shared per-program request budgets, durable policy audit, policy lifecycle/revocation, and a reviewed OS/container egress boundary before enabling ReconFTW or other subprocess tools.
 4. D03: version and offline-test `bug-bounty-hunting` Skill handoffs.
 5. D04: ReconFTW adapter with provenance and no scope expansion.
 6. D05: operation/resource graph and eligibility-aware coverage.
