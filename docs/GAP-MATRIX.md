@@ -9,7 +9,7 @@ Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementa
 |---|---|---:|---|---|
 | Planner / Worker / MainAgent | `agent/planner.go`, `agent/worker.go`, `server/engine.go` | EXISTS | Existing orchestration should be preserved; role/session constraints need audit | D00/D06 |
 | Asset graph / exploration graph | `db/exploration.go`, asset stores and graph tools | EXISTS | Asset existence, authorization, and test coverage must remain distinct | D01/D05 |
-| ProgramPolicy compiler + task binding | `policy/program.go`, `db/migrations/0008_task_program_policy.sql`, `server/server.go`, `server/manager.go` | PARTIAL | Immutable snapshot, server-stamped approval, JSONB persistence, reload validation and task Guard binding exist. Policy is optional for legacy tasks; no refresh/revocation UI or resolved-IP/usage audit ledger yet; sanitized allow/deny decisions now reuse intercept history; tests not yet executed | D01/D02 |
+| ProgramPolicy compiler + task binding | `policy/program.go`, `db/migrations/0008_task_program_policy.sql`, `server/server.go`, `server/manager.go` | PARTIAL | Immutable snapshot, server-stamped approval, JSONB persistence, reload validation and task Guard binding exist. Policy is optional for legacy tasks; no refresh/revocation UI or resolved-IP/usage audit ledger yet; sanitized allow/deny decisions now reuse intercept history; PR #1 CI run 44707635509 passed all five jobs, including Go unit/integration and race tests | D01/D02 |
 | TaskScope | `db/task_scope.go` | PARTIAL | Source comment explicitly says this is coverage/query scope, not enforced; it does not block out-of-scope calls | D01/D02 |
 | Target Gate | `intercept/target_gate.go`, `guard/guard.go` | PARTIAL | Remains opt-in and additional to ProgramPolicy. Policy-bound WebFetch is checked even with Target Gate off; pins/approvals cannot widen scope | D02 |
 | Target extraction | `intercept/target_extract.go` | PARTIAL | Declared-input inspection cannot prevent undeclared network connections; unknown/custom tools require explicit review | D02 |
@@ -45,6 +45,6 @@ Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementa
 ## M0 exit criteria
 
 - All critical source paths inventoried with file references and current behavior.
-- Baseline build, unit tests, race tests and benchmark command/result recorded, or blockers explicitly documented.
+- Baseline build, unit tests and race tests passed in PR #1 CI run 44707635509; benchmark reproduction/result remains outstanding.
 - Each P0 gap has a testable requirement and negative test fixture.
 - No production behavior changed in M0.
