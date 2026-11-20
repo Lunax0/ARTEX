@@ -27,17 +27,9 @@ const maxRedirects = 10
 // from the context of the request, which net/http keeps on every hop: the
 // target scope of the session and the Interceptor that owns its gate.
 //
-// With the gate off, or with no scope in the context (the operator's test
-// endpoint), it only applies the limit of 10 hops: nothing is parsed, resolved,
-// read or written, and the client behaves as with the default policy.
-//
-// A hop no pin or exemption covers is not followed, and the policy never waits:
-// the fetch has its own deadline, which a human decision does not fit in. The
-// request row for the hop's target is found or created (it is durable, so an
-// approval given later lets the retried call follow), and the call fails at
-// once with TARGET_APPROVAL_PENDING. A block rule, a failed lookup or a hop
-// whose target cannot be read fails the call with its block code, and opens no
-// request.
+// With a policy-bound scope, every hop is checked even when the optional gate
+// is off. With only a legacy gate-off scope, it applies the default 10-hop
+// limit and otherwise leaves redirect behavior unchanged.
 func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if len(via) >= maxRedirects {
