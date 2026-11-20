@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"regexp"
 	"strconv"
@@ -433,6 +434,7 @@ type Decision struct {
 	ModelFallback    bool
 	RuleName         string
 	ConfigDigest     string
+	PolicyCode       string // mandatory ProgramPolicy decision code; empty for ordinary intercept decisions
 	ProfileID        int64
 	Action           string // "allow" | "deny" | "ask"
 	Message          string
@@ -873,6 +875,33 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 		InitialReason: dec.Message, EffectiveAction: dec.Action,
 		DecisionReason: dec.Message, ConfigDigest: dec.ConfigDigest,
 		ExecutionStatus: executionStatus,
+	}
+	targetAuthority := ""
+	var safeTarget struct {
+		Target string `json:"target"`
+	}
+	if json.Unmarshal(safeInput, &safeTarget) == nil {
+		targetAuthority = safeTarget.Target
+	}
+	action := "deny"
+	executionStatus := "not_executed"
+	if status == "allowed" {
+		action = "allow"
+		executionStatus = "unknown"
+	}
+	_, eventErr := i.db.CreateProgramPolicyEvent(db.ProgramPolicyEvent{
+		TaskID: taskID, ConversationID: func() *int64 {
+			if convID > 0 { return &convID }
+			return nil
+		}(),
+		AgentName: agentName, ToolName: toolName, DecisionCode: dec.PolicyCode,
+		Action: action, TargetAuthority: targetAuthority, PolicyDigest: dec.ConfigDigest,
+		ExecutionStatus: executionStatus, Reason: dec.Message,
+	})
+	if eventErr != nil {
+		// The mandatory Guard decision is already made. Audit failure is visible
+		// in server logs but must never turn a deny into an allow or vice versa.
+		log.Printf("[program-policy] durable event write failed task=%s tool=%s: %v", taskID, toolName, eventErr)
 	}
 	id, err := i.db.CreateProgramPolicyDecision(convID, taskID, agentName, toolName, safeInput, status, dec.Message, audit)
 	if err == nil {
