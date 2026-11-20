@@ -40,6 +40,11 @@ export interface Task {
   archive_blocked_by_task_id?: string; // live direct dependent that must be archived first
   company_ids?: number[]; // associated company scopes; current company assets join the task at creation
   coverage_enabled?: boolean; // asset coverage feature switch (fixed at creation, on by default); false = do not compute/show coverage
+  target_gate?: boolean;
+  program_policy_bound?: boolean;
+  program_policy_valid?: boolean;
+  program_policy_digest?: string;
+  program_policy_expires_at?: string;
 }
 
 export interface TaskCategory {
