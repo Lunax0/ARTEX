@@ -213,7 +213,7 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 	// Only then are the names resolved, and the rules matched on the addresses.
 	// A name the configuration exempts is never resolved.
 	for _, ct := range checked {
-		if ct.Kind != TargetDomain || ex.derived[db.TargetKey(ct.Host, ct.Port)] {
+		if ct.Kind != TargetDomain || ex.derived[db.TargetKey(ct.Host, ct.Port)] && !c.scope.ProgramPolicyRequired {
 			continue
 		}
 		c.resolve(ct, c.fresh)
