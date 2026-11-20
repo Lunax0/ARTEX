@@ -57,8 +57,8 @@ func (d *DB) AcquireProgramPolicyBudget(ctx context.Context, key string, limits 
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO program_policy_budget_state
     (budget_key, requests_per_second, burst, max_concurrency, tokens, refilled_at, updated_at)
-VALUES ($1,$2,$3,$4,$3,now(),now())
-ON CONFLICT (budget_key) DO NOTHING`, key, limits.RequestsPerSecond, limits.Burst, limits.MaxConcurrency)
+VALUES ($1,$2,$3,$4,$5,now(),now())
+ON CONFLICT (budget_key) DO NOTHING`, key, limits.RequestsPerSecond, limits.Burst, limits.MaxConcurrency, float64(limits.Burst))
 		if err != nil {
 			_ = tx.Rollback()
 			return nil, err
