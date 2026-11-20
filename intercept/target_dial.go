@@ -168,7 +168,7 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, t
 		resolved, lookupErr := i.resolve.lookup(ctx, t.Host, true)
 		if lookupErr != nil {
 			reason := "the platform could not resolve the in-scope hostname: " + lookupErr.Error()
-			_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeResolveFailed, reason, nil)
+			_ = auditPolicyDial(ctx, scope, toolName, t, "deny", policy.CodeResolveFailed, reason, nil)
 			return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: reason}
 		}
 		ips = resolved.ips
@@ -177,22 +177,22 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, t
 	}
 	if len(ips) == 0 {
 		reason := "the platform resolver returned no addresses"
-		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeResolveFailed, reason, nil)
+		_ = auditPolicyDial(ctx, scope, toolName, t, "deny", policy.CodeResolveFailed, reason, nil)
 		return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: reason}
 	}
 	for _, ip := range ips {
 		decision := scope.ProgramPolicy.CheckResolvedIP(t.Host, t.Port, ip)
 		if !decision.Allowed {
 			reason := decision.Reason + " (resolved address " + ip + ")"
-			_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", decision.Code, reason, ips)
+			_ = auditPolicyDial(ctx, scope, toolName, t, "deny", decision.Code, reason, ips)
 			return nil, &dialError{code: decision.Code, target: t.String(), reason: reason}
 		}
 	}
 	if err := checkPolicyRevocation(ctx, scope); err != nil {
-		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeUnavailable, err.Error(), ips)
+		_ = auditPolicyDial(ctx, scope, toolName, t, "deny", policy.CodeUnavailable, err.Error(), ips)
 		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: err.Error()}
 	}
-	if err := auditPolicyDial(ctx, scope, "WebFetch", t, "allow", policy.CodeAllowed, "resolved addresses passed ProgramPolicy checks", ips); err != nil {
+	if err := auditPolicyDial(ctx, scope, toolName, t, "allow", policy.CodeAllowed, "resolved addresses passed ProgramPolicy checks", ips); err != nil {
 		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: "the dial audit event could not be persisted: " + err.Error()}
 	}
 	return i.dialAddrs(ctx, toolName, network, ips, t.Port, t)
