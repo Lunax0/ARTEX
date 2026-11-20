@@ -138,7 +138,7 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 		name    string
 	}{{1, llmRecordsMigration}, {2, llmUsageMigration}, {3, "0003_task_scope_icp_index.sql"}, {4, "0004_llm_usage_ts_index.sql"},
 		{5, "0005_traffic_rewrite_rules.sql"}, {6, "0006_activity_outbox.sql"}, {7, "0007_finding_report_state.sql"},
-		{8, "0008_task_program_policy.sql"}}
+		{8, "0008_task_program_policy.sql"}, {9, "0009_program_policy_events.sql"}}
 	if len(applied) != len(want) {
 		t.Fatalf("schema_migrations = %+v, want versions 1 to 8", applied)
 	}
@@ -151,6 +151,13 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 	}
 	if !policyColumn {
 		t.Fatal("tasks.program_policy column missing after Open")
+	}
+	var policyEventsTable bool
+	if err := d.QueryRow(`SELECT to_regclass('program_policy_events') IS NOT NULL`).Scan(&policyEventsTable); err != nil {
+		t.Fatal(err)
+	}
+	if !policyEventsTable {
+		t.Fatal("program_policy_events table missing after Open")
 	}
 	for i, w := range want {
 		content, err := fs.ReadFile(migrationsFS(), w.name)
