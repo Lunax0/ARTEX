@@ -156,9 +156,9 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 	if compiled != nil {
 		policyDigest = compiled.Digest()
 	}
-	logPolicyDecision := func(action, code, reason, digest string) {
+	logPolicyDecision := func(action, code, reason, digest string) error {
 		if g.interceptor == nil {
-			return
+			return fmt.Errorf("ProgramPolicy audit interceptor is unavailable")
 		}
 		// Never persist raw WebFetch input here: it may contain credentials,
 		// cookies, authorization headers or sensitive query parameters. The
@@ -174,7 +174,7 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 		if action == "allow" {
 			status = "allowed"
 		}
-		g.interceptor.LogProgramPolicy(ctx, intercept.ConvIDFromContext(ctx), intercept.Decision{
+		return g.interceptor.LogProgramPolicy(ctx, intercept.ConvIDFromContext(ctx), intercept.Decision{
 			Action: action, PolicyCode: code, Message: "ProgramPolicy " + code + ": " + reason,
 			ConfigDigest: digest,
 		}, ev.ToolName, safeInput, status)
@@ -223,7 +223,9 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 			return block(decision.Code, decision.Reason)
 		}
 		targetName := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
-		logPolicyDecision("allow", "POLICY_ALLOWED", "read-only WebFetch target "+targetName+" is in the reviewed program scope", policyDigest)
+		if err := logPolicyDecision("allow", "POLICY_ALLOWED", "read-only WebFetch target "+targetName+" is in the reviewed program scope", policyDigest); err != nil {
+			return block(policy.CodeUnavailable, "mandatory policy audit could not be persisted: "+err.Error())
+		}
 		return hook.Result{}
 	}
 	if intercept.IsKnownNoTargetTool(ev.ToolName) {
