@@ -1699,10 +1699,10 @@ type createTaskReq struct {
 	SeedFirstIntent      *bool                 `json:"seed_first_intent,omitempty"` // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
 	CoverageEnabled      *bool                 `json:"coverage_enabled,omitempty"`  // asset coverage feature; omitted/null = default on (true). false = disables coverage calculation/display/auto-accumulated scope + hides add_task_scope/list_untested_assets. company links are unaffected.
 	// InterceptRules: task-level asset interception/allow rules (entered at creation, stored in task_intercept_rules, never the global table).
-	InterceptRules       []taskInterceptRuleReq `json:"intercept_rules,omitempty"`  
+	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
 	// Credentials: test accounts declared at creation (#3). An empty password means
 	// "agent generates": the agent registers that account and records it back.
-	Credentials          []taskCredentialReq    `json:"credentials,omitempty"`      
+	Credentials []taskCredentialReq `json:"credentials,omitempty"`
 }
 
 type taskCredentialReq struct {
