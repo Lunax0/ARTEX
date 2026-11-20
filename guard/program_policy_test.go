@@ -91,7 +91,7 @@ func TestProgramPolicyBlocksUncontrolledNetworkTools(t *testing.T) {
 	g.SetProgramPolicy(compiled, true, "")
 	ctx := policyGuardContext(compiled, nil)
 
-	for _, tool := range []string{"Bash", "shell_open", "shell_send", "Monitor", "ExecuteExtraTool", "mcp__browser__navigate", "custom_http"} {
+	for _, tool := range []string{"Bash", "shell_open", "shell_send", "Monitor", "ExecuteExtraTool", "mcp__browser__navigate", "custom_http", "spawn_task", "create_skill", "delete_assets_by_host"} {
 		if block, msg := callPolicyGuard(g, ctx, tool, `{"url":"https://api.example.net/"}`); !block ||
 			!strings.Contains(msg, policy.CodeOperationDenied) {
 			t.Errorf("%s: block=%v msg=%q, want policy operation denial", tool, block, msg)
