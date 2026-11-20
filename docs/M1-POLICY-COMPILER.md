@@ -110,3 +110,15 @@ Policy-bound WebFetch calls use a mandatory egress governor keyed by `program_id
 - `max_retries` is validated and stored in the governor profile, but WebFetch's wrapper does not expose response status to the governor; automatic 429/503 retries are not implemented.
 
 The budget now covers the initial request and each followed redirect hop for the supported WebFetch path within one ARTEX process. It is not a complete network sandbox or a distributed rate limiter: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
+
+
+## M1.5 ProgramPolicy decision audit
+
+The mandatory Guard now records each policy-bound WebFetch authorization decision (allowed or denied) and each policy denial of an uncontrolled tool through the existing `intercept_pending` history store.
+
+- New rows use `decision_source=program_policy` and `decided_by=system`; this is distinct from human, rule and model decisions.
+- The persisted request input is deliberately sanitized to the target authority (host:port) only. Raw WebFetch arguments are not copied because they may contain cookies, authorization headers or sensitive query parameters.
+- The policy snapshot digest is stored in the existing audit metadata.
+- The approval/history UI displays a dedicated Program policy source badge and filter.
+
+This is a first durable decision-history slice, not yet a complete policy audit ledger. It does not currently record resolved IPs, every HTTP hop, token-bucket usage, policy revocation events or a tamper-evident event chain. Existing interceptor logging is best-effort if the database write fails; policy enforcement remains fail-closed independently of audit availability.
