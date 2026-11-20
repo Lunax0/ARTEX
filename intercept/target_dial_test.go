@@ -717,3 +717,25 @@ func TestProgramPolicyDialWritesResolvedIPAuditEvent(t *testing.T) {
 		t.Fatalf("target hit count=%d, want 1", hits.Load())
 	}
 }
+
+func TestProgramPolicyDialFailsClosedWithoutAuditWriter(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "missing-audit")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	scope.ProgramPolicyAudit = nil
+	ctx := WithTargetScope(context.Background(), scope)
+	_, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "audit") {
+		t.Fatalf("dial proceeded without a durable audit writer: %v", err)
+	}
+	if len(rec.calls()) != 0 || hits.Load() != 0 {
+		t.Fatalf("network reached without audit: dials=%v hits=%d", rec.calls(), hits.Load())
+	}
+}
