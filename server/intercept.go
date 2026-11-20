@@ -335,11 +335,29 @@ func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "task not found")
 		return
 	}
-	if !task.ProgramPolicyBound || task.ProgramPolicy == nil || task.ProgramPolicyError != "" {
-		writeErr(w, http.StatusConflict, "task has no valid approved ProgramPolicy snapshot")
+	if !task.ProgramPolicyBound {
+		writeErr(w, http.StatusConflict, "task has no approved ProgramPolicy snapshot")
 		return
 	}
-	snapshot := task.ProgramPolicy.Snapshot()
+	taskNum, err := strconv.ParseInt(taskID, 10, 64)
+	if err != nil || taskNum <= 0 {
+		writeErr(w, http.StatusBadRequest, "bad task id")
+		return
+	}
+	stored, err := s.m.PG().GetTask(taskNum)
+	if err != nil || stored == nil || len(stored.ProgramPolicyJSON) == 0 {
+		writeErr(w, http.StatusConflict, "task has no readable ProgramPolicy snapshot")
+		return
+	}
+	var snapshot struct {
+		ProgramID string    `json:"program_id"`
+		SourceSHA256 string `json:"source_sha256"`
+		ExpiresAt time.Time `json:"expires_at"`
+	}
+	if err := json.Unmarshal(stored.ProgramPolicyJSON, &snapshot); err != nil || snapshot.ProgramID == "" || snapshot.SourceSHA256 == "" || snapshot.ExpiresAt.IsZero() {
+		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	revocation, err := s.m.PG().GetProgramPolicyRevocation(ctx, snapshot.ProgramID, snapshot.SourceSHA256)
