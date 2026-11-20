@@ -1,6 +1,6 @@
 # ARTEX Test Plan
 
-Status: planned; M0 source review only. No local test result is claimed.  
+Status: test suites authored for M1.2; **none of the new tests have been executed yet**. No passing build/test result is claimed.  
 Baseline: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
 
 ## 1. Baseline reproduction
@@ -25,31 +25,39 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 
 ## 2. P0 policy and scope tests (must pass before live-target use)
 
-### ProgramPolicy package tests
+### ProgramPolicy package, DB and API tests
 
-The initial suite in `policy/program_test.go` covers exact and wildcard semantics, exclusions, ports, CIDR/IP matching, HTTP URL parsing, IDNA/trailing-dot normalization, public-suffix wildcard rejection, metadata/expiry, read-only defaults, resolved private addresses, ambiguous numeric hosts, digest stability and detached snapshots. These tests have been authored but have **not yet been executed**; run `go test ./policy` when a supported Go toolchain and dependencies are available.
+- `policy/program_test.go`: exact/wildcard semantics, exclusions, ports, CIDR/IP matching, URL parsing, IDNA/trailing-dot normalization, public-suffix wildcard rejection, metadata/expiry, read-only defaults, resolved private addresses, ambiguous numeric hosts, digest stability and detached snapshots.
+- `db/tasks_test.go`: JSONB policy round-trip, legacy NULL behavior and invalid JSON rejection.
+- `db/migrate_test.go`: migration sequence includes `0008_task_program_policy.sql`.
+- `server/program_policy_test.go`: server-stamped approver/timestamps, task persistence, runtime compilation and invalid policy rejection.
+- These tests are authored but not executed. Run `go test ./policy ./db ./server` in the pinned Go toolchain with a disposable PostgreSQL database.
 
-### Policy compilation
-- Reject missing/empty policy, malformed URL/domain/CIDR, wildcard overreach, contradictory allow/deny rules, invalid rate/concurrency, and unknown policy versions.
-- Preserve exact source policy text, retrieval time, program/version identifier, hash, parser version, and operator approval.
-- Fail closed if policy fetch/parse/cache is stale, incomplete, ambiguous or unavailable.
-- Distinguish explicit in-scope assets, wildcard semantics, exclusions, third-party infrastructure, account requirements, and prohibited test classes.
-- Never promote discovered assets, redirect destinations, DNS neighbors, certificates, CDN origins or linked domains into authorized scope without explicit policy logic.
+### Policy compilation and task binding
+- Reject malformed policy URL/domain/CIDR, wildcard overreach, invalid rate/concurrency, empty scope, malformed source digest and unknown policy versions.
+- Verify client-supplied approval identity/timestamps are ignored and server stamps authenticated operator identity/time.
+- Verify invalid or expired snapshots remain policy-bound and fail closed on task reload.
+- Verify legacy tasks with NULL policy preserve existing behavior.
+- The source digest is caller-supplied; the API does not fetch or independently hash the remote policy page.
+- Never promote discovered assets, redirect destinations, DNS neighbors, certificates, CDN origins or linked domains into authorized scope.
 
-### Scope enforcement
-- Test all supported URL, host, port, IP, IPv6, CIDR, IDNA, trailing-dot, userinfo, percent-encoding, alternate IPv4 notation, redirects, DNS rebinding and mixed-answer cases.
+### Guard, redirect and egress tests
+- `guard/program_policy_test.go`: policy applies with Target Gate off, precedes user allow rules, blocks Bash/shell/MCP/deferred/custom/unknown tools, and fails closed without context/snapshot.
+- `intercept/target_dial_test.go`: policy-only direct dial, private DNS answer rejection, out-of-scope host rejection, proxy denial, and combined ProgramPolicy + Target Gate pinning.
+- `intercept/target_redirect_test.go`: redirect host/scheme policy checks independent of Target Gate.
+- Test all supported URL, host, port, IP, IPv6, CIDR, IDNA, trailing-dot, userinfo, alternate IPv4 notation, redirect, DNS rebinding and mixed-answer cases.
 - A redirect to an excluded or unknown host must be blocked before the second request.
-- Re-resolve at connect time and verify the connected IP against the approved policy/pin.
-- Test direct dial, HTTP(S), SOCKS, upstream proxy, recording proxy, custom HTTP tools, browser, MCP, WebFetch, Bash, shell sessions, background jobs and subprocesses.
-- Unknown network-capable tools must fail closed until classified.
-- If OS/container egress enforcement is unavailable, disable arbitrary network-capable shell tools for live tasks rather than claiming complete coverage.
+- Re-resolve at connect time and verify the connected IP against the approved policy; dial only that exact checked IP.
+- Configured proxy egress must fail closed until the proxy enforces the same policy.
+- Browser, MCP, custom HTTP, Bash, shell sessions, arbitrary subprocesses and unknown tools are blocked in policy-bound tasks; they are not considered policy-enabled.
+- If OS/container egress enforcement is unavailable, do not enable arbitrary network-capable shell tools for live tasks.
 
 ### Rate and side effects
 - Enforce per-program global and per-host RPS, burst, concurrency, timeout, retry, and backoff across every network execution path.
 - Confirm retries honor Retry-After and never exceed the policy cap.
 - GET/HEAD/OPTIONS are not automatically safe; operation semantics and policy still apply.
 - Block destructive/write operations unless an explicit policy capability and an owned test resource are recorded.
-- Prove cancellation, task pause, policy revocation and budget exhaustion stop in-flight and queued work.
+- Prove cancellation and task pause stop in-flight and queued work. Policy revocation and budget-exhaustion tests remain blocked on the missing lifecycle/governor implementation.
 
 ### Account/data boundaries
 - Use only researcher-owned accounts and objects.
