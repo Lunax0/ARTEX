@@ -333,3 +333,28 @@ func TestProgramPolicyRedirectStopsWhenSourceIsRevoked(t *testing.T) {
 		t.Fatalf("revoked redirect consumed a request token: %v", charged)
 	}
 }
+
+func TestProgramPolicyRedirectWritesSanitizedAuditEvent(t *testing.T) {
+	var phase, toolName, authority, action, code string
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+		ProgramPolicyAudit: func(_ context.Context, p, tool, target, a, decision, _ string, ips []string) error {
+			phase, toolName, authority, action, code = p, tool, target, a, decision
+			if len(ips) != 0 {
+				t.Errorf("redirect audit unexpectedly included resolved IPs: %v", ips)
+			}
+			return nil
+		},
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(context.Context, string) error { return nil })
+	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err != nil {
+		t.Fatalf("in-scope redirect blocked: %v", err)
+	}
+	if phase != "redirect" || toolName != "WebFetch.Redirect" ||
+		authority != "app.example.com:443" || action != "allow" || code != policy.CodeAllowed {
+		t.Fatalf("unexpected redirect audit: phase=%q tool=%q authority=%q action=%q code=%q", phase, toolName, authority, action, code)
+	}
+}
