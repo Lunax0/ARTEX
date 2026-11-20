@@ -27,9 +27,10 @@ const maxRedirects = 10
 // from the context of the request, which net/http keeps on every hop: the
 // target scope of the session and the Interceptor that owns its gate.
 //
-// With a policy-bound scope, every hop is checked even when the optional gate
-// is off. With only a legacy gate-off scope, it applies the default 10-hop
-// limit and otherwise leaves redirect behavior unchanged.
+// With a policy-bound scope, every hop is checked against the program scope
+// and charged to its mandatory request budget, even when the optional gate is
+// off. With only a legacy gate-off scope, it applies the default 10-hop limit
+// and otherwise leaves redirect behavior unchanged.
 func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if len(via) >= maxRedirects {
