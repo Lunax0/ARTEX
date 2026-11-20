@@ -86,13 +86,13 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 ## Remaining blockers before live bounty use
 
 - PostgreSQL-backed per-program token buckets and concurrency leases enforce the initial WebFetch request and each followed redirect hop across ARTEX instances sharing the same database. Other network execution paths remain blocked. Automatic 429/503 retries are not implemented.
-- Sanitized policy decision events are persisted in a dedicated table. The application exposes insert/list/get only; it does not provide update/delete APIs. This is not database-enforced append-only protection or cryptographic tamper evidence. An allowed initial WebFetch request fails closed if its event cannot be persisted. Resolved-IP/per-hop usage and request-completion correlation are not yet recorded.
+- Sanitized policy decision events are persisted in a dedicated table. The application exposes insert/list/get only; it does not provide update/delete APIs. This is not database-enforced append-only protection or cryptographic tamper evidence. Allowed initial WebFetch requests, redirects and dials fail closed if their required event cannot be persisted. Token-bucket usage and request-completion correlation are not yet recorded.
 - Exact-source revocation is implemented and checked at Guard, shared-budget acquisition, redirect and final dial boundaries. There is still no in-place policy review/refresh or expiry-notification UI. Expired snapshots fail closed; changed scope requires a newly reviewed task snapshot.
 - There is no policy-aware custom HTTP, browser, MCP or subprocess sandbox. These tools are blocked, not policy-enabled.
 - Schema v1 has no path/method/account/data-class permissions.
 - CI must be checked against the latest branch head before release. Local reproduction, independent adversarial review, migration rollback testing and benchmark reproduction remain outstanding.
 
-Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy refresh UI, complete per-hop/resolved-IP audit, 429/503 retries and OS/container egress isolation remain incomplete.
+Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy refresh UI, token-bucket/request-completion audit, 429/503 retries and OS/container egress isolation remain incomplete.
 
 
 ## M1.4 request-budget integration
