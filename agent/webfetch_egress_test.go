@@ -52,7 +52,6 @@ func TestWebFetchProfileDoesNotCache(t *testing.T) {
 	}
 }
 
-
 // TestPolicyBoundWebFetchChargesRedirect verifies the complete wrapper path:
 // the initial request consumes the first token and the redirect callback
 // consumes a second token before net/http follows the hop.
