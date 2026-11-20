@@ -1,6 +1,6 @@
 # ARTEX Test Plan
 
-Status: M1 CI validation completed on 2026-11-20. PR #1 workflow run 44707635509 passed all five jobs: Go build/vet/unit+integration/race, Go stable serial tests, Web TypeScript/tests/static build, ShellCheck/shell tests, and Python posture tests. Local reproduction, fuzz/security review, migration rollback testing and benchmark reproduction remain outstanding.
+Status: Current PR #1 workflow run #59 (44777060032): Go stable serial tests, Web, Shell and Python jobs passed; Go race tests remain in progress. Local reproduction, fuzz/security review, migration rollback testing and benchmark reproduction remain outstanding.
 Baseline: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
 
 ## 1. Baseline reproduction
@@ -37,8 +37,10 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 ### ProgramPolicy audit tests
 
 - `db/intercept_decided_by_test.go`: verify ProgramPolicy decisions persist with `decision_source=program_policy`, `decided_by=system`, sanitized target-only input, policy digest metadata, history detail retrieval and combined filters.
-- Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate.
-- These tests passed in PR #1 workflow run 44707635509. Local reproduction and independent review of audit failure behavior remain outstanding.
+- `db/program_policy_events_test.go`: verify dedicated event persistence, bounded retrieval, validation and rejection of UPDATE/DELETE/TRUNCATE.
+- `db/program_policy_budget_test.go`: verify PostgreSQL-backed rate/concurrency sharing across independent DB handles, redirect token charging and cancellation.
+- Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate; allowed requests fail closed if the durable event ledger is unavailable.
+- Latest current-head CI run #59 has these Go stable serial tests in progress; the previous run #56 passed the Go stable suite before the final audit-failure behavior change.
 
 ### Policy compilation and task binding
 - Reject malformed policy URL/domain/CIDR, wildcard overreach, invalid rate/concurrency, empty scope, malformed source digest and unknown policy versions.
@@ -60,8 +62,9 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 - If OS/container egress enforcement is unavailable, do not enable arbitrary network-capable shell tools for live tasks.
 
 ### Rate and side effects
-- Enforce per-program global and per-host RPS, burst, concurrency, timeout, retry, and backoff across every network execution path.
-- Confirm retries honor Retry-After and never exceed the policy cap.
+- Enforce per-program RPS, burst, concurrency and timeout across the supported WebFetch initial request and redirect path using PostgreSQL shared state.
+- Add 429/503 retries that honor Retry-After and never exceed the policy cap; retries are not implemented yet.
+- Extend the same policy budget contract to any future network-capable tool before enabling it.
 - GET/HEAD/OPTIONS are not automatically safe; operation semantics and policy still apply.
 - Block destructive/write operations unless an explicit policy capability and an owned test resource are recorded.
 - Prove cancellation and task pause stop in-flight and queued work. Policy revocation and budget-exhaustion tests remain blocked on the missing lifecycle/governor implementation.
