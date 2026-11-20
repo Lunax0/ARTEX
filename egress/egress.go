@@ -419,16 +419,22 @@ func Do[T any](g *Governor, ctx context.Context, u *url.URL, fn func() (T, error
 // policyGovernors are process-wide governors keyed by the immutable policy
 // digest. A single synthetic bucket key is used per digest so requests to
 // different in-scope hosts share the program's RPS and concurrency budget.
+type policyGovernorEntry struct {
+	governor *Governor
+	limits   policy.Limits
+}
+
 var policyGovernors = struct {
 	sync.Mutex
-	byDigest map[string]*Governor
-}{byDigest: map[string]*Governor{}}
+	byDigest map[string]policyGovernorEntry
+}{byDigest: map[string]policyGovernorEntry{}}
 
 // programGovernor returns the process-wide governor for one immutable policy
 // revision. The synthetic host key makes its token bucket and concurrency
 // slots common to every target hostname in that program.
 func programGovernor(digest string, limits policy.Limits) (*Governor, error) {
-	if strings.TrimSpace(digest) == "" || math.IsNaN(limits.RequestsPerSecond) ||
+	digest = strings.TrimSpace(digest)
+	if digest == "" || math.IsNaN(limits.RequestsPerSecond) ||
 		math.IsInf(limits.RequestsPerSecond, 0) || limits.RequestsPerSecond <= 0 ||
 		limits.RequestsPerSecond > 1000 || limits.Burst < 1 || limits.Burst > 1000 ||
 		limits.MaxConcurrency < 1 || limits.MaxConcurrency > 128 ||
@@ -444,17 +450,14 @@ func programGovernor(digest string, limits policy.Limits) (*Governor, error) {
 	}
 	policyGovernors.Lock()
 	defer policyGovernors.Unlock()
-	if g := policyGovernors.byDigest[digest]; g != nil {
-		old := g.Profile()
-		if old.RPS != profile.RPS || old.Burst != profile.Burst ||
-			old.MaxPerHost != profile.MaxPerHost || old.MaxGlobal != profile.MaxGlobal ||
-			old.MaxRetries != profile.MaxRetries {
+	if entry, ok := policyGovernors.byDigest[digest]; ok {
+		if entry.limits != limits {
 			return nil, errors.New("egress: ProgramPolicy budget identity was reused with different limits")
 		}
-		return g, nil
+		return entry.governor, nil
 	}
 	g := New(profile)
-	policyGovernors.byDigest[digest] = g
+	policyGovernors.byDigest[digest] = policyGovernorEntry{governor: g, limits: limits}
 	return g, nil
 }
 
@@ -464,9 +467,10 @@ func programGovernor(digest string, limits policy.Limits) (*Governor, error) {
 // each additional followed hop with PolicyWait while this slot remains held.
 // These limits are mandatory even when the optional noise profile is off.
 func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits policy.Limits, fn func() (T, error)) (T, error) {
-	if u == nil || u.Host == "" {
+	if u == nil || u.Host == "" || u.User != nil ||
+		(!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
 		var zero T
-		return zero, errors.New("egress: ProgramPolicy request has no valid target URL")
+		return zero, errors.New("egress: ProgramPolicy request has no valid HTTP(S) target URL")
 	}
 	g, err := programGovernor(digest, limits)
 	if err != nil {
