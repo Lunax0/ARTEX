@@ -182,7 +182,7 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 	})
 	reuseRequest := map[string]any{
 		"description":    "Attempt to reuse revoked policy source",
-		"goal":           "Read-only authorized testing of app.example.com with owned accounts.",
+		"goal":           "Review https://app.example.com/ for reproducible security issues using only owned test accounts and without accessing other users data.",
 		"program_policy": policyInput,
 	}
 	reuseRaw, _ := json.Marshal(reuseRequest)
