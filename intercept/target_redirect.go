@@ -25,7 +25,8 @@ const maxRedirects = 10
 // RedirectCheck returns the redirect policy (http.Client.CheckRedirect) of a
 // platform-owned client run by the tool toolName. Everything it needs comes
 // from the context of the request, which net/http keeps on every hop: the
-// target scope of the session and the Interceptor that owns its gate.
+// target scope, the Interceptor that owns its optional gate, and the mandatory
+// request-budget callback of a policy-bound WebFetch invocation.
 //
 // With a policy-bound scope, every hop is checked against the program scope
 // and charged to its mandatory request budget, even when the optional gate is
