@@ -1,6 +1,6 @@
 # M1 ProgramPolicy — Schema v1 and Runtime Status
 
-Status: **partially integrated; not yet certified for live bounty use**  
+Status: **runtime integrated; not yet certified for live bounty use**  
 Package: `policy`  
 Branch: `dev/m0-baseline-audit`  
 Implementation PR: https://github.com/Lunax0/ARTEX/pull/1
@@ -85,14 +85,14 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 
 ## Remaining blockers before live bounty use
 
-- ProgramPolicy request budgets are enforced for the initial WebFetch request and each followed redirect hop. They are not yet enforced across every network execution path; additional tools remain blocked. Automatic 429/503 retries are not implemented.
-- Policy decisions are not yet written to a durable policy audit ledger with digest, rule, resolved IP and decision provenance.
-- There is no UI for policy review, source capture, approval, refresh, revocation or expiry notification.
+- PostgreSQL-backed per-program token buckets and concurrency leases enforce the initial WebFetch request and each followed redirect hop across ARTEX instances sharing the same database. Other network execution paths remain blocked. Automatic 429/503 retries are not implemented.
+- Sanitized policy decision events are persisted in a dedicated table. Ordinary UPDATE/DELETE/TRUNCATE statements are rejected by database triggers. An allowed initial WebFetch request fails closed if its event cannot be persisted. Resolved-IP/per-hop usage and request-completion correlation are not yet recorded.
+- There is no in-place policy review, refresh, revocation or expiry-notification workflow. Expired snapshots fail closed; a changed scope requires a newly reviewed task snapshot.
 - There is no policy-aware custom HTTP, browser, MCP or subprocess sandbox. These tools are blocked, not policy-enabled.
 - Schema v1 has no path/method/account/data-class permissions.
-- The added unit/integration tests have not yet been executed in the pinned Go toolchain/CI.
+- Latest CI run #59 has Go stable, Web, Shell and Python jobs passed; Go race tests are still running. Local reproduction, independent adversarial review, migration rollback testing and benchmark reproduction remain outstanding.
 
-Do not use this milestone alone to authorize live bounty execution. CI is green, but the supported WebFetch enforcement path and redirect accounting still require independent security review; distributed budgets, policy lifecycle/revocation, complete audit events and OS/container egress isolation remain incomplete.
+Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy lifecycle, complete per-hop/resolved-IP audit, 429/503 retries and OS/container egress isolation remain incomplete.
 
 
 ## M1.4 request-budget integration
@@ -106,19 +106,22 @@ Policy-bound WebFetch calls use a mandatory egress governor keyed by `program_id
 - Every redirect that is allowed by ProgramPolicy (and by Target Gate, when enabled) consumes another token in `PolicyWait` before net/http follows it.
 - A redirect denied by scope, awaiting human approval, or missing its budget callback is not followed. It does not consume a request token.
 - Reusing one policy revision key with any different request limits (including timeout) fails closed rather than silently retaining stale limits.
-- Governor state is process-local and in-memory: tasks in one ARTEX process share it, but separate ARTEX replicas do not, and a process restart resets the token bucket. A database-backed/distributed budget is still required before horizontal scaling.
+- The current implementation uses PostgreSQL-backed token buckets and concurrency leases keyed by `program_id + source_sha256`. Independent ARTEX instances sharing the same PostgreSQL database share the same budget. Lease expiry recovers slots after process crashes; a deployment using a different database or bypassing the callback would not share the budget.
 - `max_retries` is validated and stored in the governor profile, but WebFetch's wrapper does not expose response status to the governor; automatic 429/503 retries are not implemented.
 
-The budget now covers the initial request and each followed redirect hop for the supported WebFetch path within one ARTEX process. It is not a complete network sandbox or a distributed rate limiter: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
+The budget covers the initial request and each followed redirect hop for the supported WebFetch path across instances sharing the same PostgreSQL database. It is not a complete network sandbox: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
 
 
 ## M1.5 ProgramPolicy decision audit
 
-The mandatory Guard now records each policy-bound WebFetch authorization decision (allowed or denied) and each policy denial of an uncontrolled tool through the existing `intercept_pending` history store.
+The mandatory Guard now records sanitized policy decisions in a dedicated `program_policy_events` ledger and also mirrors them into the existing `intercept_pending` history store for UI visibility.
 
 - New rows use `decision_source=program_policy` and `decided_by=system`; this is distinct from human, rule and model decisions.
 - The persisted request input is deliberately sanitized to the target authority (host:port) only. Raw WebFetch arguments are not copied because they may contain cookies, authorization headers or sensitive query parameters.
-- The policy snapshot digest is stored in the existing audit metadata.
+- The policy snapshot digest, decision code, task/conversation, agent/tool, action, target authority, execution status, system actor and timestamp are stored in the dedicated ledger.
+- Raw tool input, URL path/query, headers, cookies, credentials and model conversation content are excluded.
+- Database triggers reject ordinary UPDATE, DELETE and TRUNCATE statements; this is not cryptographic tamper evidence against a database owner/superuser.
 - The approval/history UI displays a dedicated Program policy source badge and filter.
+- Allowed initial WebFetch calls fail closed if the dedicated event cannot be inserted. Denials remain denied even if audit persistence fails.
 
-This is a first durable decision-history slice, not yet a complete policy audit ledger. It does not currently record resolved IPs, every HTTP hop, token-bucket usage, policy revocation events or a tamper-evident event chain. Existing interceptor logging is best-effort if the database write fails; policy enforcement remains fail-closed independently of audit availability.
+The ledger does not yet record resolved IPs, every redirect hop, token-bucket usage, request completion or policy revocation events. The secondary `intercept_pending` mirror remains best-effort.
