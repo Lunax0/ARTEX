@@ -29,7 +29,7 @@ Track technical verification separately from platform outcomes:
 2. Audit existing code before changing it. Prefer small, test-led, reversible changes.
 3. ReconFTW (`six2dez/reconftw`) is the planned default Recon entry point. ARTEX remains focused on authorized vulnerability research. Existing BBOT/ScopeSentry integrations remain compatibility/import paths, not competing default schedulers.
 4. Adapt useful workflow contracts from `mdpsec/bug-bounty-hunting-prompts` (phase handoffs, applicability, failure records, two-account checks, chains, independent verification, root-cause deduplication). Do not copy private helper dependencies or instructions that conflict with a program's policy.
-5. Add one versioned `bug-bounty-hunting` workflow Skill; reuse existing `api-security`, `api-recon`, and other relevant skills. Keep `artex-bugcrowd-vrt-skill` responsible for versioned VRT mapping/report checks.
+5. Add one versioned `bug-bounty-hunting` workflow Skill; reuse existing `api-security`, `api-recon`, and other relevant skills. Keep `artex-bugcrowd-vrt-skill` responsible for versioned VRT mapping/report checks. The first unified phase-handoff Skill now exists at `skills/bug-bounty-hunting/SKILL.md`; loader/runtime discovery and offline handoff validation remain.
 6. Reuse existing LLM profiles and role bindings initially. Strong models are candidates for Main/Planner/independent verification; lower-cost models for routine worker tasks. No dynamic reward-driven model router until measured evidence exists.
 7. Generate reports for human review only. No automatic bounty submission.
 8. Default to read-only. Use only explicitly authorized targets and researcher-controlled accounts/objects. No access to other users' real data. Stop if non-owned PII appears. Respect program rate, concurrency, identification, and tool restrictions.
@@ -69,7 +69,7 @@ Track technical verification separately from platform outcomes:
    - A dedicated sanitized `program_policy_events` ledger is append-only against ordinary UPDATE/DELETE/TRUNCATE; allowed initial WebFetch decisions fail closed if ledger insertion fails.
    - In-place policy refresh/revocation, resolved-IP/per-hop usage audit, 429/503 retries, and OS/container egress enforcement remain outstanding.
    - Latest CI run #59 (44777060032) has Go stable, Web, Shell and Python jobs passed; Go race tests are still running. Passing CI does not certify the policy boundary against adversarial bypasses.
-4. D03: version and offline-test `bug-bounty-hunting` Skill handoffs.
+4. D03: validate the new `bug-bounty-hunting` Skill in the ARTEX loader, add offline handoff fixtures, and ensure it composes existing skills without duplicating their specialist content.
 5. D04: ReconFTW adapter with provenance and no scope expansion.
 6. D05: operation/resource graph and eligibility-aware coverage.
 7. D06: planner intent deduplication, scheduling, and account/session conflict control.
