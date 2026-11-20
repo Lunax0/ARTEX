@@ -236,18 +236,35 @@ func TestProgramPolicyRedirectCheckIsIndependentOfTargetGate(t *testing.T) {
 		TaskID: "77", Enabled: func() bool { return false },
 		ProgramPolicyRequired: true, ProgramPolicy: compiled,
 	}
+	var charged []string
 	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(_ context.Context, rawURL string) error {
+		charged = append(charged, rawURL)
+		return nil
+	})
 
 	if err := hop(ctx, "https://outside.example.org/", "https://app.example.com/"); err == nil ||
 		!strings.Contains(err.Error(), policy.CodeOutOfScope) {
 		t.Fatalf("out-of-scope redirect was not blocked with Target Gate off: %v", err)
 	}
+	if len(charged) != 0 {
+		t.Fatalf("out-of-scope redirect consumed budget: %v", charged)
+	}
 	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err != nil {
 		t.Fatalf("in-scope redirect unexpectedly blocked: %v", err)
+	}
+	if err := hop(ctx, "https://app.example.com/third", "https://app.example.com/", "https://app.example.com/next"); err != nil {
+		t.Fatalf("second in-scope redirect unexpectedly blocked: %v", err)
+	}
+	if len(charged) != 2 || charged[0] != "https://app.example.com/next" || charged[1] != "https://app.example.com/third" {
+		t.Fatalf("charged redirects = %v, want both allowed hops in order", charged)
 	}
 	if err := hop(ctx, "ftp://app.example.com/file", "https://app.example.com/"); err == nil ||
 		!strings.Contains(err.Error(), policy.CodeInvalidTarget) {
 		t.Fatalf("non-HTTP redirect was not blocked: %v", err)
+	}
+	if len(charged) != 2 {
+		t.Fatalf("invalid redirect consumed budget: %v", charged)
 	}
 }
 
@@ -259,5 +276,33 @@ func TestProgramPolicyRedirectFailsClosedWhenSnapshotMissing(t *testing.T) {
 	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err == nil ||
 		!strings.Contains(err.Error(), policy.CodeUnavailable) {
 		t.Fatalf("missing policy snapshot was not blocked: %v", err)
+	}
+}
+
+
+func TestProgramPolicyRedirectFailsClosedWithoutBudgetCallback(t *testing.T) {
+	ctx := WithTargetScope(context.Background(), TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+	})
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "budget") || !strings.Contains(err.Error(), "not followed") {
+		t.Fatalf("redirect without a budget callback was not blocked: %v", err)
+	}
+}
+
+func TestProgramPolicyRedirectFailsClosedWhenBudgetWaitFails(t *testing.T) {
+	ctx := WithTargetScope(context.Background(), TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+	})
+	ctx = WithRequestBudget(ctx, func(context.Context, string) error {
+		return context.DeadlineExceeded
+	})
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "deadline exceeded") || !strings.Contains(err.Error(), "not followed") {
+		t.Fatalf("redirect after failed budget wait was not blocked: %v", err)
 	}
 }
