@@ -70,8 +70,11 @@ func (f governedFetch) Call(ctx context.Context, input json.RawMessage, tc *acto
 		// program identity and the exact reviewed source, not the compiled
 		// snapshot digest, so parallel tasks for one program share one budget.
 		budgetKey := snapshot.ProgramID + ":" + snapshot.SourceSHA256
+		if scope.ProgramPolicyAcquire == nil || scope.ProgramPolicyWait == nil {
+			return actool.Errorf("ARTEX policy control: shared ProgramPolicy request budget is unavailable; request blocked"), nil
+		}
 		budgetCtx := intercept.WithRequestBudget(bounded, func(waitCtx context.Context, _ string) error {
-			return egress.PolicyWait(waitCtx, budgetKey, limits)
+			return scope.ProgramPolicyWait(waitCtx, budgetKey, limits)
 		})
 		return egress.PolicyDo(bounded, u, budgetKey, limits, func() (actool.Result, error) {
 			return f.CoreTool.Call(budgetCtx, input, tc)
