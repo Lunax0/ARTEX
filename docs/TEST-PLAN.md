@@ -33,6 +33,13 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 - `server/program_policy_test.go`: server-stamped approver/timestamps, task persistence, runtime compilation and invalid policy rejection.
 - These tests are authored but not executed. Run `go test ./policy ./db ./server` in the pinned Go toolchain with a disposable PostgreSQL database.
 
+
+### ProgramPolicy audit tests
+
+- `db/intercept_decided_by_test.go`: verify ProgramPolicy decisions persist with `decision_source=program_policy`, `decided_by=system`, sanitized target-only input, policy digest metadata, history detail retrieval and combined filters.
+- Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate.
+- These tests are authored but have **not yet been executed** in the pinned Go toolchain/CI.
+
 ### Policy compilation and task binding
 - Reject malformed policy URL/domain/CIDR, wildcard overreach, invalid rate/concurrency, empty scope, malformed source digest and unknown policy versions.
 - Verify client-supplied approval identity/timestamps are ignored and server stamps authenticated operator identity/time.
