@@ -47,13 +47,32 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 				return &redirectError{res: decision, from: from, hop: req.URL.String(), scope: scope.scopeName()}
 			}
 		}
-		if !scoped || scope.Enabled == nil || !scope.Enabled() {
-			return nil
+		// The optional Target Gate runs before charging the request budget: a
+		// redirect that is denied or awaiting approval is not sent and consumes
+		// no request token.
+		if scoped && scope.Enabled != nil && scope.Enabled() {
+			if from == "" {
+				return errors.New("redirect origin is unavailable")
+			}
+			if err := checkRedirectHop(ctx, scope, toolName, req.URL.String(), from); err != nil {
+				return err
+			}
 		}
-		if from == "" {
-			return errors.New("redirect origin is unavailable")
+		// Every policy-bound redirect that will actually be followed consumes
+		// another token. Missing budget wiring is a fail-closed condition; this
+		// prevents a future HTTP client from accidentally bypassing accounting.
+		if scoped && scope.ProgramPolicyRequired {
+			budget, ok := RequestBudgetFromContext(ctx)
+			if !ok {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the mandatory per-program request budget is unavailable"}
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			if err := budget(ctx, req.URL.String()); err != nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the per-program request budget could not be acquired: " + err.Error()}
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
 		}
-		return checkRedirectHop(ctx, scope, toolName, req.URL.String(), from)
+		return nil
 	}
 }
 
