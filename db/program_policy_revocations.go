@@ -13,11 +13,11 @@ import (
 // policy source. A refreshed source has a different digest and requires a new
 // explicit approval before it can be used.
 type ProgramPolicyRevocation struct {
-	ProgramID   string    `json:"program_id"`
-	SourceSHA256 string   `json:"source_sha256"`
-	RevokedAt   time.Time `json:"revoked_at"`
-	RevokedBy   string    `json:"revoked_by"`
-	Reason      string    `json:"reason"`
+	ProgramID    string    `json:"program_id"`
+	SourceSHA256 string    `json:"source_sha256"`
+	RevokedAt    time.Time `json:"revoked_at"`
+	RevokedBy    string    `json:"revoked_by"`
+	Reason       string    `json:"reason"`
 }
 
 func validateProgramPolicyIdentity(programID, digest string) error {
