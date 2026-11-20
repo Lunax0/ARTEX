@@ -269,6 +269,11 @@ func (i *Interceptor) dialAddrs(ctx context.Context, network string, ips []strin
 		if err != nil || network == "tcp4" && !a.Is4() || network == "tcp6" && !a.Is6() {
 			continue
 		}
+		if scope, ok := TargetScopeFromContext(ctx); ok && scope.ProgramPolicyRequired {
+			if err := checkPolicyRevocation(ctx, scope); err != nil {
+				return nil, &dialError{code: policy.CodeUnavailable, target: net.JoinHostPort(ip, strconv.Itoa(port)), reason: err.Error()}
+			}
+		}
 		conn, err := dial(ctx, network, net.JoinHostPort(ip, strconv.Itoa(port)))
 		if err == nil {
 			return conn, nil
