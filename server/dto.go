@@ -32,27 +32,27 @@ func rawString(raw json.RawMessage) string {
 type TaskDTO struct {
 	ID                     string             `json:"id"`
 	ExplorationID          int64              `json:"exploration_id"`
-	Name                   string             `json:"name"`                                 // optional task name; empty = unnamed
+	Name                   string             `json:"name"` // optional task name; empty = unnamed
 	CategoryID             *int64             `json:"category_id,omitempty"`
 	CategoryName           string             `json:"category_name,omitempty"`
 	Pinned                 bool               `json:"pinned"`
 	PinnedAt               string             `json:"pinned_at,omitempty"`
 	Description            string             `json:"description"`
 	Goal                   string             `json:"goal"`
-	Status                 string             `json:"status"`                               // created | running | paused | done | failed
+	Status                 string             `json:"status"` // created | running | paused | done | failed
 	CreatedAt              string             `json:"created_at"`
-	CreatedUnix            int64              `json:"created_unix"`                         // created_at as unix seconds (for run-duration calc)
-	CompletedAt            string             `json:"completed_at"`                         // RFC3339 finish time (done/failed); "" if unfinished
-	CompletedUnix          int64              `json:"completed_unix"`                       // completed_at as unix seconds (0 if unfinished)
-	LastActivity           int64              `json:"last_activity_unix"`                   // unix seconds of the last activity (0 if none)
+	CreatedUnix            int64              `json:"created_unix"`       // created_at as unix seconds (for run-duration calc)
+	CompletedAt            string             `json:"completed_at"`       // RFC3339 finish time (done/failed); "" if unfinished
+	CompletedUnix          int64              `json:"completed_unix"`     // completed_at as unix seconds (0 if unfinished)
+	LastActivity           int64              `json:"last_activity_unix"` // unix seconds of the last activity (0 if none)
 	Paused                 bool               `json:"paused"`
 	Queued                 bool               `json:"queued"`
-	Tokens                 TokenTotalDTO      `json:"tokens"`                               // whole-task token consumption
+	Tokens                 TokenTotalDTO      `json:"tokens"` // whole-task token consumption
 	GoalsTotal             int                `json:"goals_total"`
 	GoalsMet               int                `json:"goals_met"`
-	InFlight               int                `json:"in_flight"`                            // number of running Workers (intents with state=running)
-	Findings               FindingSeverityDTO `json:"findings"`                             // findings registered for this task (findings table, bucketed by severity)
-	LLMProfileID           *int64             `json:"llm_profile_id,omitempty"`             // LLM profile used for this task; nil = default
+	InFlight               int                `json:"in_flight"`                // number of running Workers (intents with state=running)
+	Findings               FindingSeverityDTO `json:"findings"`                 // findings registered for this task (findings table, bucketed by severity)
+	LLMProfileID           *int64             `json:"llm_profile_id,omitempty"` // LLM profile used for this task; nil = default
 	LLMProfileIDs          []int64            `json:"llm_profile_ids"`
 	ActiveLLMProfileID     *int64             `json:"active_llm_profile_id,omitempty"`
 	LLMRotate              bool               `json:"llm_rotate"`
@@ -61,9 +61,9 @@ type TaskDTO struct {
 	SourceTaskIDs          []string           `json:"source_task_ids"`
 	ArchiveBlockedBy       string             `json:"archive_blocked_by_task_id,omitempty"`
 	CompanyIDs             []int64            `json:"company_ids"`
-	CoverageEnabled        bool               `json:"coverage_enabled"`                     // asset coverage feature switch (fixed at creation)
-	PlanQuietMode          bool               `json:"plan_quiet_mode"`                      // planner quiet-mode switch (#86), editable mid-run
-	TargetGate             bool               `json:"target_gate"`                          // optional approval gate for asset targets
+	CoverageEnabled        bool               `json:"coverage_enabled"` // asset coverage feature switch (fixed at creation)
+	PlanQuietMode          bool               `json:"plan_quiet_mode"`  // planner quiet-mode switch (#86), editable mid-run
+	TargetGate             bool               `json:"target_gate"`      // optional approval gate for asset targets
 	ProgramPolicyBound     bool               `json:"program_policy_bound"`
 	ProgramPolicyValid     bool               `json:"program_policy_valid"`
 	ProgramPolicyDigest    string             `json:"program_policy_digest,omitempty"`
@@ -132,36 +132,36 @@ func taskDTO(t *Task, status string) TaskDTO {
 		policyValid = t.ProgramPolicyBound && t.ProgramPolicyError == "" && snapshot.ExpiresAt.After(time.Now())
 	}
 	return TaskDTO{
-		ID                    : t.ID,
-		ExplorationID         : t.ExpID,
-		Name                  : lifecycle.Name,
-		CategoryID            : lifecycle.CategoryID,
-		CategoryName          : lifecycle.CategoryName,
-		Pinned                : lifecycle.PinnedAt > 0,
-		PinnedAt              : completedRFC(lifecycle.PinnedAt),
-		Description           : t.Description,
-		Goal                  : t.Goal,
-		Status                : status,
-		CreatedAt             : rfc3339(time.Unix(t.CreatedAt, 0)),
-		CreatedUnix           : t.CreatedAt,
-		CompletedAt           : completedRFC(lifecycle.CompletedAt),
-		CompletedUnix         : lifecycle.CompletedAt,
-		Paused                : lifecycle.Paused,
-		Queued                : lifecycle.Queued,
-		LLMProfileID          : llmState.ProfileID,
-		LLMProfileIDs         : profileIDs,
-		ActiveLLMProfileID    : llmState.ActiveID,
-		LLMRotate             : llmState.Rotate,
-		LLMFailoverState      : llmState.FailoverState,
-		LLMFailoverReason     : llmState.FailoverReason,
-		SourceTaskIDs         : sourceIDs,
-		CompanyIDs            : lifecycle.CompanyIDs,
-		CoverageEnabled       : t.CoverageEnabled,
-		PlanQuietMode         : t.PlanQuietMode,
-		TargetGate            : t.targetGate.Load(),
-		ProgramPolicyBound    : t.ProgramPolicyBound,
-		ProgramPolicyValid    : policyValid,
-		ProgramPolicyDigest   : policyDigest,
+		ID:                     t.ID,
+		ExplorationID:          t.ExpID,
+		Name:                   lifecycle.Name,
+		CategoryID:             lifecycle.CategoryID,
+		CategoryName:           lifecycle.CategoryName,
+		Pinned:                 lifecycle.PinnedAt > 0,
+		PinnedAt:               completedRFC(lifecycle.PinnedAt),
+		Description:            t.Description,
+		Goal:                   t.Goal,
+		Status:                 status,
+		CreatedAt:              rfc3339(time.Unix(t.CreatedAt, 0)),
+		CreatedUnix:            t.CreatedAt,
+		CompletedAt:            completedRFC(lifecycle.CompletedAt),
+		CompletedUnix:          lifecycle.CompletedAt,
+		Paused:                 lifecycle.Paused,
+		Queued:                 lifecycle.Queued,
+		LLMProfileID:           llmState.ProfileID,
+		LLMProfileIDs:          profileIDs,
+		ActiveLLMProfileID:     llmState.ActiveID,
+		LLMRotate:              llmState.Rotate,
+		LLMFailoverState:       llmState.FailoverState,
+		LLMFailoverReason:      llmState.FailoverReason,
+		SourceTaskIDs:          sourceIDs,
+		CompanyIDs:             lifecycle.CompanyIDs,
+		CoverageEnabled:        t.CoverageEnabled,
+		PlanQuietMode:          t.PlanQuietMode,
+		TargetGate:             t.targetGate.Load(),
+		ProgramPolicyBound:     t.ProgramPolicyBound,
+		ProgramPolicyValid:     policyValid,
+		ProgramPolicyDigest:    policyDigest,
 		ProgramPolicyExpiresAt: policyExpiresAt,
 	}
 }
