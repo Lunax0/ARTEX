@@ -234,6 +234,7 @@ func TestProgramPolicyRedirectCheckIsIndependentOfTargetGate(t *testing.T) {
 	scope := TargetScope{
 		TaskID: "77", Enabled: func() bool { return false },
 		ProgramPolicyRequired: true, ProgramPolicy: compiled,
+		ProgramPolicyCheck: func(context.Context) error { return nil },
 	}
 	var charged []string
 	ctx := WithTargetScope(context.Background(), scope)
@@ -282,6 +283,7 @@ func TestProgramPolicyRedirectFailsClosedWithoutBudgetCallback(t *testing.T) {
 	ctx := WithTargetScope(context.Background(), TargetScope{
 		TaskID: "77", Enabled: func() bool { return false },
 		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
 	})
 	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
 	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
