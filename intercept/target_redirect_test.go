@@ -358,3 +358,18 @@ func TestProgramPolicyRedirectWritesSanitizedAuditEvent(t *testing.T) {
 		t.Fatalf("unexpected redirect audit: phase=%q tool=%q authority=%q action=%q code=%q", phase, toolName, authority, action, code)
 	}
 }
+
+func TestProgramPolicyRedirectFailsClosedWithoutAuditWriter(t *testing.T) {
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(context.Context, string) error { return nil })
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "audit") {
+		t.Fatalf("redirect proceeded without a durable audit writer: %v", err)
+	}
+}
