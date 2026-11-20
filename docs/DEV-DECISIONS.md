@@ -66,8 +66,8 @@ Track technical verification separately from platform outcomes:
    - Contract and limitations: `docs/M1-POLICY-COMPILER.md`.
 3. D02: complete the shared request budget, audit and lifecycle contract, and establish a reviewed OS/container egress boundary before enabling ReconFTW or other subprocess tools.
    - PostgreSQL-backed per-program token buckets and concurrency leases are implemented and tested across independent DB handles.
-   - A dedicated sanitized `program_policy_events` ledger is append-only against ordinary UPDATE/DELETE/TRUNCATE; allowed initial WebFetch decisions fail closed if ledger insertion fails.
-   - In-place policy refresh/revocation, resolved-IP/per-hop usage audit, 429/503 retries, and OS/container egress enforcement remain outstanding.
+   - A dedicated sanitized `program_policy_events` ledger exposes only insert/list/get application methods; allowed initial WebFetch decisions fail closed if ledger insertion fails. It is not database-enforced append-only or cryptographically tamper-evident; database owners can still alter rows.
+   - Exact-source policy revocation is now supported through an authenticated task-scoped API and checked at Guard, budget acquisition, redirect and final dial boundaries. A revoked source cannot be reactivated; a new reviewed source snapshot is required. In-place refresh/expiry-notification UI, resolved-IP/per-hop usage audit, 429/503 retries, and OS/container egress enforcement remain outstanding.
    - Latest CI run #59 (44777060032) has Go stable, Web, Shell and Python jobs passed; Go race tests are still running. Passing CI does not certify the policy boundary against adversarial bypasses.
 4. D03: validate the new `bug-bounty-hunting` Skill in the ARTEX loader, add offline handoff fixtures, and ensure it composes existing skills without duplicating their specialist content.
 5. D04: ReconFTW adapter with provenance and no scope expansion.
