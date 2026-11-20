@@ -174,11 +174,11 @@ func CompileAt(input ProgramPolicy, now time.Time) (*CompiledPolicy, error) {
 
 	compiled := &CompiledPolicy{snapshot: input}
 	var compileErr error
-	compiled.inScope, compileErr = compileRules(input.InScope)
+	compiled.inScope, compileErr = compileRules(input.InScope, []uint16{80, 443})
 	if compileErr != nil {
 		return nil, fmt.Errorf("in_scope: %w", compileErr)
 	}
-	compiled.excluded, compileErr = compileRules(input.OutOfScope)
+	compiled.excluded, compileErr = compileRules(input.OutOfScope, nil)
 	if compileErr != nil {
 		return nil, fmt.Errorf("out_of_scope: %w", compileErr)
 	}
@@ -228,10 +228,10 @@ func validateLimits(l Limits) error {
 	return nil
 }
 
-func compileRules(rules []AssetRule) ([]compiledRule, error) {
+func compileRules(rules []AssetRule, defaultPorts []uint16) ([]compiledRule, error) {
 	out := make([]compiledRule, 0, len(rules))
 	for i, rule := range rules {
-		cr, err := compileRule(rule)
+		cr, err := compileRule(rule, defaultPorts)
 		if err != nil {
 			return nil, fmt.Errorf("rule %d (%q): %w", i, rule.Pattern, err)
 		}
@@ -246,7 +246,7 @@ func compileRules(rules []AssetRule) ([]compiledRule, error) {
 	return out, nil
 }
 
-func compileRule(rule AssetRule) (compiledRule, error) {
+func compileRule(rule AssetRule, defaultPorts []uint16) (compiledRule, error) {
 	raw := strings.TrimSpace(rule.Pattern)
 	if raw == "" {
 		return compiledRule{}, errors.New("asset pattern is empty")
@@ -255,9 +255,13 @@ func compileRule(rule AssetRule) (compiledRule, error) {
 		return compiledRule{}, errors.New("asset pattern must be a host, wildcard, IP or CIDR, not a URL or command")
 	}
 	cr := compiledRule{pattern: raw}
-	if len(rule.Ports) > 0 {
-		cr.ports = make(map[uint16]struct{}, len(rule.Ports))
-		for _, port := range rule.Ports {
+	ports := rule.Ports
+	if len(ports) == 0 {
+		ports = defaultPorts
+	}
+	if len(ports) > 0 {
+		cr.ports = make(map[uint16]struct{}, len(ports))
+		for _, port := range ports {
 			if port == 0 {
 				return compiledRule{}, errors.New("port 0 is not valid")
 			}
