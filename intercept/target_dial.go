@@ -56,6 +56,12 @@ func PinnedDialer(toolName string, scoped bool) func(ctx context.Context, networ
 			if scope.Interceptor == nil {
 				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: "the policy-bound session has no controlled resolver or dialer"}
 			}
+			if scope.ProgramPolicyCheck == nil {
+				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: "the ProgramPolicy revocation check is unavailable"}
+			}
+			if err := scope.ProgramPolicyCheck(ctx); err != nil {
+				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: err.Error()}
+			}
 			if scope.Interceptor.policyProxyConfigured(toolName) {
 				return nil, &dialError{code: policy.CodeProxyUnsupported, target: addr, reason: "proxy egress is not yet policy-aware; disable proxies or wait for policy-enforcing proxy support"}
 			}
