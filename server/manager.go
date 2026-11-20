@@ -993,6 +993,8 @@ func (t *Task) targetScope(wait time.Duration) intercept.TargetScope {
 	return intercept.TargetScope{
 		TaskID: t.ID, Enabled: t.targetGate.Load, WaitBound: wait, Interceptor: t.interceptor,
 		ProgramPolicyRequired: t.ProgramPolicyBound, ProgramPolicy: t.ProgramPolicy, ProgramPolicyError: t.ProgramPolicyError,
+		ProgramPolicyAcquire: t.interceptor.AcquireProgramPolicyBudget,
+		ProgramPolicyWait: t.interceptor.ConsumeProgramPolicyRequest,
 	}
 }
 
