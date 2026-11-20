@@ -68,4 +68,7 @@ func TestProgramPolicyEventRoundTrip(t *testing.T) {
 	if _, err := d.Exec("DELETE FROM program_policy_events WHERE id=$1", id); err == nil {
 		t.Fatal("policy event deletion was not rejected")
 	}
+	if _, err := d.Exec("TRUNCATE TABLE program_policy_events"); err == nil {
+		t.Fatal("policy event truncation was not rejected")
+	}
 }
