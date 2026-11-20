@@ -676,3 +676,34 @@ func TestProgramPolicyDialRechecksRevocationAfterResolution(t *testing.T) {
 		t.Fatalf("revocation check count=%d dialled=%v hits=%d", checks, rec.calls(), hits.Load())
 	}
 }
+
+func TestProgramPolicyDialWritesResolvedIPAuditEvent(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "audited-dial")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	var phase, toolName, authority, action, code string
+	var resolved []string
+	scope.ProgramPolicyAudit = func(_ context.Context, p, tool, target, a, decision, _ string, ips []string) error {
+		phase, toolName, authority, action, code = p, tool, target, a, decision
+		resolved = append([]string(nil), ips...)
+		return nil
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "audited-dial" {
+		t.Fatalf("policy-bound fetch: body=%q err=%v", body, err)
+	}
+	if phase != "dial" || toolName != "WebFetch.Dial" ||
+		authority != "app.example.com:"+port || action != "allow" || code != policy.CodeAllowed ||
+		!slices.Equal(resolved, []string{"203.0.113.7"}) {
+		t.Fatalf("unexpected dial audit: phase=%q tool=%q authority=%q action=%q code=%q IPs=%v", phase, toolName, authority, action, code, resolved)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("target hit count=%d, want 1", hits.Load())
+	}
+}
