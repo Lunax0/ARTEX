@@ -152,7 +152,31 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 	if !required {
 		return hook.Result{}
 	}
+	logPolicyDecision := func(action, code, reason, digest string) {
+		if g.interceptor == nil {
+			return
+		}
+		// Never persist raw WebFetch input here: it may contain credentials,
+		// cookies, authorization headers or sensitive query parameters. The
+		// policy audit needs the decision and target authority, not request data.
+		target := ""
+		if ev.ToolName == "WebFetch" {
+			if targets := intercept.ExtractTargets(ev.ToolName, ev.Input); len(targets) == 1 {
+				target = net.JoinHostPort(targets[0].Host, strconv.Itoa(targets[0].Port))
+			}
+		}
+		safeInput, _ := json.Marshal(map[string]string{"target": target})
+		status := "denied"
+		if action == "allow" {
+			status = "allowed"
+		}
+		g.interceptor.Log(ctx, intercept.ConvIDFromContext(ctx), intercept.Decision{
+			Action: action, Message: "ProgramPolicy " + code + ": " + reason,
+			ConfigDigest: digest,
+		}, ev.ToolName, safeInput, status)
+	}
 	block := func(code, reason string) hook.Result {
+		logPolicyDecision("deny", code, reason, compiled.Digest())
 		return g.block(ev.ToolName, systemBlockMessage(code+": "+reason), cmd)
 	}
 	if compileErr != "" || compiled == nil {
@@ -180,6 +204,8 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 		if !decision.Allowed {
 			return block(decision.Code, decision.Reason)
 		}
+		targetName := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
+		logPolicyDecision("allow", "POLICY_ALLOWED", "read-only WebFetch target "+targetName+" is in the reviewed program scope", compiled.Digest())
 		return hook.Result{}
 	}
 	if intercept.IsKnownNoTargetTool(ev.ToolName) {
