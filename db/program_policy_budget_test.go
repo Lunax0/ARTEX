@@ -165,7 +165,7 @@ func TestProgramPolicyBudgetRejectsDifferentProfilesForSameKey(t *testing.T) {
 	}
 	changedRetries := limits
 	changedRetries.MaxRetries++
-	if _, err := d.ConsumeProgramPolicyRequest(context.Background(), key, changedRetries); err == nil {
+	if err := d.ConsumeProgramPolicyRequest(context.Background(), key, changedRetries); err == nil {
 		t.Fatal("same budget key accepted a different retry limit")
 	}
 }
