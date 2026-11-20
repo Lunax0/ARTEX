@@ -279,7 +279,6 @@ func TestUserAgentAndEnv(t *testing.T) {
 	}
 }
 
-
 func TestPolicyDoSharesOneRateBucketAcrossHosts(t *testing.T) {
 	digest := "test-policy-shared-rate-bucket"
 	policyGovernors.Lock()
@@ -369,7 +368,6 @@ func TestPolicyDoHonorsCancellationWhileWaiting(t *testing.T) {
 		t.Fatalf("cancelled wait: err=%v callback_called=%v", err, called)
 	}
 }
-
 
 func TestPolicyWaitChargesAdditionalRedirectRequest(t *testing.T) {
 	digest := "test-policy-redirect-token"
