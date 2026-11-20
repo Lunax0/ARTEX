@@ -63,6 +63,9 @@ func PinnedDialer(toolName string, scoped bool) func(ctx context.Context, networ
 			if err := scope.ProgramPolicyCheck(ctx); err != nil {
 				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: err.Error()}
 			}
+			if scope.ProgramPolicyAudit == nil {
+				return nil, &dialError{code: policy.CodeUnavailable, target: addr, reason: "the ProgramPolicy network audit writer is unavailable"}
+			}
 			if scope.Interceptor.policyProxyConfigured(toolName) {
 				return nil, &dialError{code: policy.CodeProxyUnsupported, target: addr, reason: "proxy egress is not yet policy-aware; disable proxies or wait for policy-enforcing proxy support"}
 			}
@@ -151,34 +154,46 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, n
 		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: reason}
 	}
 	if decision := scope.ProgramPolicy.CheckTarget(t.Host, t.Port); !decision.Allowed {
+		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", decision.Code, decision.Reason, nil)
 		return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason}
 	}
 	if i.isDerivedEndpoint(t.Host, t.Port) {
-		return nil, &dialError{code: policy.CodeProxyUnsupported, target: t.String(),
-			reason: "this connection is routed to a platform-derived service/proxy endpoint whose ultimate egress destination is not controlled by ProgramPolicy"}
+		reason := "this connection is routed to a platform-derived service/proxy endpoint whose ultimate egress destination is not controlled by ProgramPolicy"
+		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeProxyUnsupported, reason, nil)
+		return nil, &dialError{code: policy.CodeProxyUnsupported, target: t.String(), reason: reason}
 	}
 
 	var ips []string
 	if t.Kind == TargetDomain {
 		resolved, lookupErr := i.resolve.lookup(ctx, t.Host, true)
 		if lookupErr != nil {
-			return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: "the platform could not resolve the in-scope hostname: " + lookupErr.Error()}
+			reason := "the platform could not resolve the in-scope hostname: " + lookupErr.Error()
+			_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeResolveFailed, reason, nil)
+			return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: reason}
 		}
 		ips = resolved.ips
 	} else {
 		ips = []string{t.Host}
 	}
 	if len(ips) == 0 {
-		return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: "the platform resolver returned no addresses"}
+		reason := "the platform resolver returned no addresses"
+		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeResolveFailed, reason, nil)
+		return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: reason}
 	}
 	for _, ip := range ips {
 		decision := scope.ProgramPolicy.CheckResolvedIP(t.Host, t.Port, ip)
 		if !decision.Allowed {
-			return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason + " (resolved address " + ip + ")"}
+			reason := decision.Reason + " (resolved address " + ip + ")"
+			_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", decision.Code, reason, ips)
+			return nil, &dialError{code: decision.Code, target: t.String(), reason: reason}
 		}
 	}
 	if err := checkPolicyRevocation(ctx, scope); err != nil {
+		_ = auditPolicyDial(ctx, scope, "WebFetch", t, "deny", policy.CodeUnavailable, err.Error(), ips)
 		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: err.Error()}
+	}
+	if err := auditPolicyDial(ctx, scope, "WebFetch", t, "allow", policy.CodeAllowed, "resolved addresses passed ProgramPolicy checks", ips); err != nil {
+		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: "the dial audit event could not be persisted: " + err.Error()}
 	}
 	return i.dialAddrs(ctx, network, ips, t.Port)
 }
