@@ -120,8 +120,8 @@ The mandatory Guard now records sanitized policy decisions in a dedicated `progr
 - The persisted request input is deliberately sanitized to the target authority (host:port) only. Raw WebFetch arguments are not copied because they may contain cookies, authorization headers or sensitive query parameters.
 - The policy snapshot digest, decision code, task/conversation, agent/tool, action, target authority, execution status, system actor and timestamp are stored in the dedicated ledger.
 - Raw tool input, URL path/query, headers, cookies, credentials and model conversation content are excluded.
-- Database triggers reject ordinary UPDATE, DELETE and TRUNCATE statements; this is not cryptographic tamper evidence against a database owner/superuser.
+- The application exposes no update/delete methods for policy events. This is an application-level write-path convention only, not database-enforced append-only protection or cryptographic tamper evidence; a database role with write privileges can alter rows.
 - The approval/history UI displays a dedicated Program policy source badge and filter.
 - Allowed initial WebFetch calls fail closed if the dedicated event cannot be inserted. Denials remain denied even if audit persistence fails.
 
-The ledger does not yet record resolved IPs, every redirect hop, token-bucket usage, request completion or policy revocation events. The secondary `intercept_pending` mirror remains best-effort.
+The ledger does not yet record resolved IPs, every redirect hop, token-bucket usage or request completion. Exact-source revocation is recorded separately in `program_policy_revocations` with operator identity, reason and timestamp; the secondary `intercept_pending` mirror remains best-effort.
