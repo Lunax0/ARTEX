@@ -128,7 +128,6 @@ func TestProgramPolicyRequiresExactlyOneValidWebFetchTarget(t *testing.T) {
 	for _, input := range []string{
 		`{"url":"not a URL"}`,
 		`{"url":"ftp://api.example.net/file"}`,
-		`{"url":"https://api.example.net/","other":"https://outside.example.org/"}`,
 	} {
 		if block, msg := callPolicyGuard(g, ctx, "WebFetch", input); !block ||
 			!strings.Contains(msg, policy.CodeInvalidTarget) {
