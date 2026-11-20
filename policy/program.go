@@ -51,18 +51,18 @@ const (
 // ProgramPolicy is the reviewed, versioned input to the compiler. Scope is
 // intentionally explicit: discovering an asset never adds it to InScope.
 type ProgramPolicy struct {
-	SchemaVersion int          `json:"schema_version"`
-	ProgramID     string       `json:"program_id"`
-	PolicyURL     string       `json:"policy_url"`
-	SourceSHA256  string       `json:"source_sha256"`
-	RetrievedAt   time.Time    `json:"retrieved_at"`
-	ExpiresAt     time.Time    `json:"expires_at"`
-	ApprovedAt    time.Time    `json:"approved_at"`
-	ApprovedBy    string       `json:"approved_by"`
-	InScope       []AssetRule  `json:"in_scope"`
-	OutOfScope    []AssetRule  `json:"out_of_scope,omitempty"`
-	Limits        Limits       `json:"limits"`
-	Permissions   Permissions  `json:"permissions"`
+	SchemaVersion int         `json:"schema_version"`
+	ProgramID     string      `json:"program_id"`
+	PolicyURL     string      `json:"policy_url"`
+	SourceSHA256  string      `json:"source_sha256"`
+	RetrievedAt   time.Time   `json:"retrieved_at"`
+	ExpiresAt     time.Time   `json:"expires_at"`
+	ApprovedAt    time.Time   `json:"approved_at"`
+	ApprovedBy    string      `json:"approved_by"`
+	InScope       []AssetRule `json:"in_scope"`
+	OutOfScope    []AssetRule `json:"out_of_scope,omitempty"`
+	Limits        Limits      `json:"limits"`
+	Permissions   Permissions `json:"permissions"`
 }
 
 // AssetRule is a host, wildcard domain, IP literal, or CIDR. A wildcard
@@ -94,10 +94,10 @@ type Permissions struct {
 }
 
 type Decision struct {
-	Allowed         bool   `json:"allowed"`
-	Code            string `json:"code"`
-	Reason          string `json:"reason"`
-	MatchedPattern  string `json:"matched_pattern,omitempty"`
+	Allowed        bool   `json:"allowed"`
+	Code           string `json:"code"`
+	Reason         string `json:"reason"`
+	MatchedPattern string `json:"matched_pattern,omitempty"`
 }
 
 type compiledRule struct {
