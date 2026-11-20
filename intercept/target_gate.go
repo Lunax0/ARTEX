@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // Block codes of the gate decision. Like the codes of a target request they
@@ -153,6 +154,21 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 	if c.ref, err = c.scope.ref(); err != nil {
 		return nil, TargetResult{Code: TargetGateUnavailable, Host: targets[0].Host, Port: targets[0].Port, Reason: err.Error()}
 	}
+	if c.scope.ProgramPolicyRequired {
+		if c.scope.ProgramPolicyError != "" || c.scope.ProgramPolicy == nil {
+			reason := c.scope.ProgramPolicyError
+			if reason == "" {
+				reason = "the required program policy snapshot is unavailable"
+			}
+			return nil, TargetResult{Code: policy.CodeUnavailable, Host: targets[0].Host, Port: targets[0].Port, Reason: reason}
+		}
+		for _, target := range targets {
+			decision := c.scope.ProgramPolicy.CheckTarget(target.Host, target.Port)
+			if !decision.Allowed {
+				return nil, TargetResult{Code: decision.Code, Host: target.Host, Port: target.Port, Reason: decision.Reason}
+			}
+		}
+	}
 	first := &checkedTarget{Target: targets[0]}
 	rules, err := i.targets.BlockRules(c.ref)
 	if err != nil {
@@ -201,6 +217,9 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 			continue
 		}
 		c.resolve(ct, c.fresh)
+		if decision := c.checkProgramPolicy(ct); decision.Code != "" {
+			return c.block(decision.Code, "policy_denied", ct, decision.Reason)
+		}
 		if rule, hit := blockRule(rules, ct); hit {
 			return c.block(TargetRuleBlocked, "rule_blocked", ct, fmt.Sprintf("%s is blocked by an asset rule. %s", ct.Target, rule.Reason()))
 		}
@@ -249,6 +268,9 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 			if c.resolve(ct, true); ct.err != nil {
 				return c.block(TargetResolveFailed, "resolve_failed", ct, c.resolveFailure(ct))
 			}
+			if decision := c.checkProgramPolicy(ct); decision.Code != "" {
+				return c.block(decision.Code, "policy_denied", ct, decision.Reason)
+			}
 			if rule, hit := blockRule(rules, ct); hit {
 				return c.block(TargetRuleBlocked, "rule_blocked", ct, fmt.Sprintf("%s is blocked by an asset rule. %s", ct.Target, rule.Reason()))
 			}
@@ -293,6 +315,31 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 		}
 	}
 	return unpinned, TargetResult{}
+}
+
+// checkProgramPolicy validates every address the target gate has just
+// resolved. It runs on the same resolution that will be pinned or dialled.
+func (c *targetCheck) checkProgramPolicy(ct *checkedTarget) TargetResult {
+	if !c.scope.ProgramPolicyRequired {
+		return TargetResult{}
+	}
+	if c.scope.ProgramPolicy == nil || c.scope.ProgramPolicyError != "" {
+		reason := c.scope.ProgramPolicyError
+		if reason == "" {
+			reason = "the required program policy snapshot is unavailable"
+		}
+		return TargetResult{Code: policy.CodeUnavailable, Host: ct.Host, Port: ct.Port, Reason: reason}
+	}
+	if ct.err != nil {
+		return TargetResult{} // the ordinary resolver failure below remains authoritative
+	}
+	for _, rawIP := range ct.ips {
+		decision := c.scope.ProgramPolicy.CheckResolvedIP(ct.Host, ct.Port, rawIP)
+		if !decision.Allowed {
+			return TargetResult{Code: decision.Code, Host: ct.Host, Port: ct.Port, Reason: decision.Reason}
+		}
+	}
+	return TargetResult{}
 }
 
 // resolve fills the addresses of a name. fresh skips the cache.
