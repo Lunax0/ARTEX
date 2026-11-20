@@ -34,6 +34,7 @@ const (
 	CodeOperationDenied  = "POLICY_OPERATION_DENIED"
 	CodeNonPublicAddress = "POLICY_NON_PUBLIC_ADDRESS"
 	CodeProxyUnsupported = "POLICY_PROXY_UNSUPPORTED"
+	CodeResolveFailed    = "POLICY_RESOLVE_FAILED"
 )
 
 type Operation string
