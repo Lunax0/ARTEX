@@ -539,7 +539,6 @@ func TestPinUsedRecordsEffectiveNameOnly(t *testing.T) {
 	}
 }
 
-
 func compiledDialPolicy(t *testing.T, allowedPorts ...uint16) *policy.CompiledPolicy {
 	t.Helper()
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
@@ -553,13 +552,13 @@ func compiledDialPolicy(t *testing.T, allowedPorts ...uint16) *policy.CompiledPo
 	sum := sha256.Sum256([]byte("dial policy source"))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
 		SchemaVersion: policy.SchemaVersion,
-		ProgramID: "dial-policy-test",
-		PolicyURL: "https://bugcrowd.com/engagements/dial-policy-test",
-		SourceSHA256: hex.EncodeToString(sum[:]),
-		RetrievedAt: now,
-		ApprovedAt: now,
-		ApprovedBy: "operator",
-		ExpiresAt: now.Add(time.Hour),
+		ProgramID:     "dial-policy-test",
+		PolicyURL:     "https://bugcrowd.com/engagements/dial-policy-test",
+		SourceSHA256:  hex.EncodeToString(sum[:]),
+		RetrievedAt:   now,
+		ApprovedAt:    now,
+		ApprovedBy:    "operator",
+		ExpiresAt:     now.Add(time.Hour),
 		InScope: []policy.AssetRule{
 			{Pattern: "app.example.com", Ports: ports},
 			{Pattern: "203.0.113.0/24", Ports: ports},
