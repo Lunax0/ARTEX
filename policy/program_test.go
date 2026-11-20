@@ -54,7 +54,7 @@ func TestExactAndWildcardDomainSemantics(t *testing.T) {
 		{"example.com", 443, true},
 		{"www.example.com", 443, false},
 		{"api.example.net", 443, true},
-		{"a.b.example.net", 8443, true},
+		{"a.b.example.net", 443, true},
 		{"example.net", 443, false},
 		{"notexample.net", 443, false},
 	} {
@@ -76,6 +76,25 @@ func TestOutOfScopeAlwaysOverridesInScope(t *testing.T) {
 	}
 	if got := p.CheckTarget("admin.example.com", 443); got.Allowed || got.Code != CodeExcluded {
 		t.Fatalf("explicit exclusion did not win: %+v", got)
+	}
+}
+
+func TestDefaultInScopePortsAreHTTPOnlyAndExclusionsCoverAllPorts(t *testing.T) {
+	input := testPolicy()
+	input.InScope = []AssetRule{{Pattern: "*.example.com"}}
+	input.OutOfScope = []AssetRule{{Pattern: "admin.example.com"}}
+	p := mustCompile(t, input)
+
+	for _, port := range []int{80, 443} {
+		if got := p.CheckTarget("api.example.com", port); !got.Allowed {
+			t.Errorf("default web port %d denied: %+v", port, got)
+		}
+	}
+	if got := p.CheckTarget("api.example.com", 8443); got.Allowed {
+		t.Fatalf("unlisted non-web port unexpectedly allowed: %+v", got)
+	}
+	if got := p.CheckTarget("admin.example.com", 22); got.Allowed || got.Code != CodeExcluded {
+		t.Fatalf("portless out-of-scope rule did not exclude SSH port: %+v", got)
 	}
 }
 
@@ -122,7 +141,7 @@ func TestCheckURLRequiresAbsoluteHTTPWithoutUserinfo(t *testing.T) {
 	p := mustCompile(t, testPolicy())
 	for _, raw := range []string{
 		"https://example.com/path",
-		"http://example.com:8080/",
+		"http://example.com/",
 	} {
 		if got := p.CheckURL(raw); !got.Allowed {
 			t.Errorf("%q denied: %+v", raw, got)
