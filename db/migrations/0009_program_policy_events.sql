@@ -19,3 +19,14 @@ CREATE INDEX IF NOT EXISTS idx_program_policy_events_task_created
     ON program_policy_events (task_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_program_policy_events_digest_created
     ON program_policy_events (policy_digest, created_at DESC);
+
+-- Prevent ordinary application roles from rewriting or deleting decision history.
+CREATE OR REPLACE FUNCTION reject_program_policy_event_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'program_policy_events is append-only';
+END;
+$$;
+CREATE TRIGGER program_policy_events_append_only
+    BEFORE UPDATE OR DELETE ON program_policy_events
+    FOR EACH ROW EXECUTE FUNCTION reject_program_policy_event_mutation();
