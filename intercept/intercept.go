@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // ctxKey is the unexported context key type to avoid collisions.
@@ -96,6 +97,13 @@ type TargetScope struct {
 	Enabled        func() bool
 	WaitBound      time.Duration
 	Interceptor    *Interceptor
+
+	// ProgramPolicy is an immutable, reviewed authorization snapshot. Unlike
+	// Enabled (the optional human approval gate), Required is unconditional:
+	// when true, every target and connection must pass this policy.
+	ProgramPolicyRequired bool
+	ProgramPolicy         *policy.CompiledPolicy
+	ProgramPolicyError    string
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the
