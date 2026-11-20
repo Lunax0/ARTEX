@@ -322,6 +322,61 @@ func (s *Server) interceptListTaskItems(w http.ResponseWriter, r *http.Request) 
 }
 
 // programPolicyTaskEvents returns the sanitized, append-only ProgramPolicy decision ledger for one task.
+type programPolicyRevokeRequest struct {
+	Reason string `json:"reason"`
+}
+
+// programPolicyRevoke permanently revokes the exact approved source snapshot
+// shared by every task using the same program id and policy source digest.
+func (s *Server) programPolicyRevoke(w http.ResponseWriter, r *http.Request) {
+	if s.pg(w) == nil {
+		return
+	}
+	taskID := strings.TrimSpace(r.PathValue("taskID"))
+	task, ok := s.m.Task(taskID)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "task not found")
+		return
+	}
+	if !task.ProgramPolicyBound || task.ProgramPolicy == nil || task.ProgramPolicyError != "" {
+		writeErr(w, http.StatusConflict, "task has no valid approved ProgramPolicy snapshot to revoke")
+		return
+	}
+	actor := s.approver(r)
+	if actor == "" {
+		writeErr(w, http.StatusUnauthorized, "a valid authenticated operator identity is required")
+		return
+	}
+	var req programPolicyRevokeRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid revocation request")
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" || len(reason) > 2048 {
+		writeErr(w, http.StatusBadRequest, "revocation reason is required and must be at most 2048 characters")
+		return
+	}
+	snapshot := task.ProgramPolicy.Snapshot()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := s.m.PG().RevokeProgramPolicy(ctx, snapshot.ProgramID, snapshot.SourceSHA256, actor, reason); err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not persist ProgramPolicy revocation")
+		return
+	}
+	record, err := s.m.PG().GetProgramPolicyRevocation(ctx, snapshot.ProgramID, snapshot.SourceSHA256)
+	if err != nil || record == nil {
+		writeErr(w, http.StatusInternalServerError, "could not verify ProgramPolicy revocation")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"revoked": true, "program_id": record.ProgramID,
+		"source_sha256": record.SourceSHA256, "revoked_at": record.RevokedAt,
+		"revoked_by": record.RevokedBy, "reason": record.Reason,
+		"scope": "all tasks using this program id and exact source digest",
+	})
+}
+
 func (s *Server) programPolicyTaskEvents(w http.ResponseWriter, r *http.Request) {
 	pg := s.pg(w)
 	if pg == nil {
