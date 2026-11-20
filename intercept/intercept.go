@@ -176,6 +176,7 @@ type TargetScope struct {
 	ProgramPolicyAcquire  func(context.Context, string, policy.Limits) (func(), error)
 	ProgramPolicyWait     func(context.Context, string, policy.Limits) error
 	ProgramPolicyCheck    func(context.Context) error
+	ProgramPolicyAudit    func(context.Context, string, string, string, string, string, string, []string) error
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the
