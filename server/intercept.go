@@ -350,9 +350,9 @@ func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var snapshot struct {
-		ProgramID string    `json:"program_id"`
-		SourceSHA256 string `json:"source_sha256"`
-		ExpiresAt time.Time `json:"expires_at"`
+		ProgramID    string    `json:"program_id"`
+		SourceSHA256 string    `json:"source_sha256"`
+		ExpiresAt    time.Time `json:"expires_at"`
 	}
 	if err := json.Unmarshal(stored.ProgramPolicyJSON, &snapshot); err != nil || snapshot.ProgramID == "" || snapshot.SourceSHA256 == "" || snapshot.ExpiresAt.IsZero() {
 		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
