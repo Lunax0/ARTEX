@@ -3,8 +3,8 @@ package guard
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"testing"
 	"time"
