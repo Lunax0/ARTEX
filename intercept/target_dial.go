@@ -258,6 +258,11 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 		return nil, blocked(res)
 	}
 	if scope.ProgramPolicyRequired {
+		if len(c.checked[0].ips) == 0 {
+			reason := "the target gate did not provide resolved addresses for a policy-bound connection"
+			_ = auditPolicyDial(ctx, scope, toolName, t, "deny", policy.CodeResolveFailed, reason, nil)
+			return nil, &dialError{code: policy.CodeResolveFailed, target: t.String(), reason: reason}
+		}
 		for _, ip := range c.checked[0].ips {
 			decision := scope.ProgramPolicy.CheckResolvedIP(t.Host, t.Port, ip)
 			if !decision.Allowed {
