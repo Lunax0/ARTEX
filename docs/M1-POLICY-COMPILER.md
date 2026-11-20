@@ -93,3 +93,16 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 - The added unit/integration tests have not yet been executed in the pinned Go toolchain/CI.
 
 Do not use this milestone alone to authorize live bounty execution until the P0 tests pass, CI is green, the per-program request governor is implemented, and the remaining network escape paths have been independently reviewed.
+
+
+## M1.3 request-budget integration
+
+Policy-bound WebFetch calls now use a mandatory egress governor keyed by `program_id + source_sha256`, not by the compiled snapshot digest. This ensures separate tasks that use the same reviewed policy revision share one budget even though their server-stamped approval timestamps differ.
+
+- `requests_per_second` and `burst` share one token bucket across target hosts for that program revision.
+- `max_concurrency` limits concurrent top-level WebFetch invocations for that program revision.
+- `request_timeout_seconds` bounds the WebFetch invocation context.
+- `max_retries` is passed into the governor profile; WebFetch's wrapper does not expose response status to the governor, so it does not currently retry 429/503 responses itself.
+- Redirect hops remain independently scope-checked by `RedirectCheck` and exact-IP checked by `PinnedDialer`, but they are not individually charged as separate RPS tokens. The current budget unit is one WebFetch tool invocation.
+
+This is a meaningful partial enforcement improvement, not a complete per-HTTP-request accounting guarantee. Do not enable additional network-capable tools for policy-bound tasks until they are integrated with the same budget and enforcement path.
