@@ -23,6 +23,7 @@ import (
 	"github.com/Autumn-27/artex/enrich"
 	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/artex/traffic/rewrite"
 	actool "github.com/Autumn-27/norma/tool"
@@ -72,7 +73,10 @@ type Task struct {
 	DeadlineAt           int64                  `json:"deadline_at,omitempty"`
 	Store                *pgdb.ExplorationStore `json:"-"`
 	Guard                *guard.Guard           `json:"-"`
-	TargetGuard          *guard.Guard           `json:"-"` // planner and main-agent hooks: target gate only
+	TargetGuard          *guard.Guard           `json:"-"` // planner and main-agent hooks: target gate + mandatory policy
+	ProgramPolicy        *policy.CompiledPolicy `json:"-"`
+	ProgramPolicyBound   bool                   `json:"-"`
+	ProgramPolicyError   string                 `json:"-"`
 	notify               chan struct{}
 	lifecycleMu          sync.RWMutex
 	llmMu                sync.RWMutex
@@ -940,6 +944,23 @@ func unixNanoOrZero(t *time.Time) int64 {
 }
 
 func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Interceptor) *Task {
+	policyBound := len(pt.ProgramPolicyJSON) > 0
+	var compiledPolicy *policy.CompiledPolicy
+	var policyCompileErr string
+	if policyBound {
+		var snapshot policy.ProgramPolicy
+		if err := json.Unmarshal(pt.ProgramPolicyJSON, &snapshot); err != nil {
+			policyCompileErr = "stored policy snapshot is invalid JSON: " + err.Error()
+		} else if compiled, err := policy.Compile(snapshot); err != nil {
+			policyCompileErr = "stored policy snapshot failed validation: " + err.Error()
+		} else {
+			compiledPolicy = compiled
+		}
+	}
+	workerGuard := guard.NewWithInterceptor(ic)
+	targetGuard := guard.NewTargetOnly(ic)
+	workerGuard.SetProgramPolicy(compiledPolicy, policyBound, policyCompileErr)
+	targetGuard.SetProgramPolicy(compiledPolicy, policyBound, policyCompileErr)
 	t := &Task{
 		ID: strconv.FormatInt(pt.ID, 10), ExpID: pt.ExplorationID,
 		Name:       pt.Name,
@@ -958,8 +979,8 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		PlanQuietMode:   pt.PlanQuietMode,
 		CoverageEnabled: pt.CoverageEnabled,
 		FirstRunAt:      unixOrZero(pt.FirstRunAt), DeadlineAt: unixOrZero(pt.DeadlineAt),
-		Store: store, Guard: guard.NewWithInterceptor(ic), TargetGuard: guard.NewTargetOnly(ic), notify: make(chan struct{}, 1),
-		interceptor: ic,
+		Store: store, Guard: workerGuard, TargetGuard: targetGuard, notify: make(chan struct{}, 1),
+		interceptor: ic, ProgramPolicy: compiledPolicy, ProgramPolicyBound: policyBound, ProgramPolicyError: policyCompileErr,
 	}
 	t.targetGate.Store(pt.TargetGate)
 	return t
@@ -970,7 +991,10 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 // Enabled reads the task's opt-in flag on every call, so a switch through the
 // API takes effect on the next tool call.
 func (t *Task) targetScope(wait time.Duration) intercept.TargetScope {
-	return intercept.TargetScope{TaskID: t.ID, Enabled: t.targetGate.Load, WaitBound: wait, Interceptor: t.interceptor}
+	return intercept.TargetScope{
+		TaskID: t.ID, Enabled: t.targetGate.Load, WaitBound: wait, Interceptor: t.interceptor,
+		ProgramPolicyRequired: t.ProgramPolicyBound, ProgramPolicy: t.ProgramPolicy, ProgramPolicyError: t.ProgramPolicyError,
+	}
 }
 
 // searchBackendEndpoints are the endpoints of the search backends. The
