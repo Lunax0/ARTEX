@@ -1037,6 +1037,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/intercept/history/{id}/execution", s.interceptExecution)
 	mux.HandleFunc("GET /api/intercept/task/{taskID}", s.interceptListTaskItems)
 	mux.HandleFunc("GET /api/program-policy/task/{taskID}/events", s.programPolicyTaskEvents)
+	mux.HandleFunc("POST /api/program-policy/task/{taskID}/revoke", s.programPolicyRevoke)
 	mux.HandleFunc("GET /api/intercept/tool-config", s.interceptGetToolConfig)
 	mux.HandleFunc("PUT /api/intercept/tool-config", s.interceptSetToolConfig)
 	mux.HandleFunc("GET /api/target-gate/exemptions", s.targetGateGetExemptions)
