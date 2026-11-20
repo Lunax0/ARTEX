@@ -85,24 +85,27 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 
 ## Remaining blockers before live bounty use
 
-- Per-program/per-host RPS, burst, concurrency, timeout, retry and cancellation budgets are validated but not yet enforced as one shared governor across all execution paths.
+- ProgramPolicy request budgets are enforced for the initial WebFetch request and each followed redirect hop. They are not yet enforced across every network execution path; additional tools remain blocked. Automatic 429/503 retries are not implemented.
 - Policy decisions are not yet written to a durable policy audit ledger with digest, rule, resolved IP and decision provenance.
 - There is no UI for policy review, source capture, approval, refresh, revocation or expiry notification.
 - There is no policy-aware custom HTTP, browser, MCP or subprocess sandbox. These tools are blocked, not policy-enabled.
 - Schema v1 has no path/method/account/data-class permissions.
 - The added unit/integration tests have not yet been executed in the pinned Go toolchain/CI.
 
-Do not use this milestone alone to authorize live bounty execution until the P0 tests pass, CI is green, the per-program request governor is implemented, and the remaining network escape paths have been independently reviewed.
+Do not use this milestone alone to authorize live bounty execution until the P0 tests pass, CI is green, the supported WebFetch enforcement path and its redirect accounting have been independently reviewed, and the remaining network escape paths have been independently reviewed.
 
 
-## M1.3 request-budget integration
+## M1.4 request-budget integration
 
-Policy-bound WebFetch calls now use a mandatory egress governor keyed by `program_id + source_sha256`, not by the compiled snapshot digest. This ensures separate tasks that use the same reviewed policy revision share one budget even though their server-stamped approval timestamps differ.
+Policy-bound WebFetch calls use a mandatory egress governor keyed by `program_id + source_sha256`, not by the compiled snapshot digest. Separate tasks using the same reviewed program-policy revision therefore share one budget even though their server-stamped approval timestamps differ.
 
-- `requests_per_second` and `burst` share one token bucket across target hosts for that program revision.
-- `max_concurrency` limits concurrent top-level WebFetch invocations for that program revision.
-- `request_timeout_seconds` bounds the WebFetch invocation context.
-- `max_retries` is passed into the governor profile; WebFetch's wrapper does not expose response status to the governor, so it does not currently retry 429/503 responses itself.
-- Redirect hops remain independently scope-checked by `RedirectCheck` and exact-IP checked by `PinnedDialer`, but they are not individually charged as separate RPS tokens. The current budget unit is one WebFetch tool invocation.
+- `requests_per_second` and `burst` share one token bucket across all target hosts for that program revision.
+- `max_concurrency` limits concurrent top-level WebFetch invocations for that program revision. A redirect chain retains the same invocation slot.
+- `request_timeout_seconds` bounds the complete WebFetch invocation, including time spent waiting for redirect tokens.
+- The initial WebFetch request consumes one token in `PolicyDo`.
+- Every redirect that is allowed by ProgramPolicy (and by Target Gate, when enabled) consumes another token in `PolicyWait` before net/http follows it.
+- A redirect denied by scope, awaiting human approval, or missing its budget callback is not followed. It does not consume a request token.
+- Reusing one policy revision key with different rate/burst/concurrency/retry limits fails closed rather than silently retaining stale limits.
+- `max_retries` is validated and stored in the governor profile, but WebFetch's wrapper does not expose response status to the governor; automatic 429/503 retries are not implemented.
 
-This is a meaningful partial enforcement improvement, not a complete per-HTTP-request accounting guarantee. Do not enable additional network-capable tools for policy-bound tasks until they are integrated with the same budget and enforcement path.
+The budget now covers the initial request and each followed redirect hop for the supported WebFetch path. It is not a complete network sandbox: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
