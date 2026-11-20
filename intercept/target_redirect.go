@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/Autumn-27/artex/policy"
 )
 
 // The HTTP clients the platform owns (WebFetch and the custom http tool)
@@ -42,12 +44,43 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 			return errors.New("stopped after 10 redirects")
 		}
 		ctx := req.Context()
-		scope, on := renderedScope(ctx)
-		if !on {
+		scope, scoped := TargetScopeFromContext(ctx)
+		from := ""
+		if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
+			from = via[len(via)-1].URL.String()
+		}
+		if scoped && scope.ProgramPolicyRequired {
+			decision := checkProgramPolicyURL(scope, req.URL.String())
+			if decision.Code != "" {
+				return &redirectError{res: decision, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+		}
+		if !scoped || scope.Enabled == nil || !scope.Enabled() {
 			return nil
 		}
-		return checkRedirectHop(ctx, scope, toolName, req.URL.String(), via[len(via)-1].URL.String())
+		if from == "" {
+			return errors.New("redirect origin is unavailable")
+		}
+		return checkRedirectHop(ctx, scope, toolName, req.URL.String(), from)
 	}
+}
+
+// checkProgramPolicyURL applies the mandatory program scope to a redirect
+// hop independently of the optional Target Gate.
+func checkProgramPolicyURL(scope TargetScope, raw string) TargetResult {
+	if scope.ProgramPolicyError != "" || scope.ProgramPolicy == nil {
+		reason := scope.ProgramPolicyError
+		if reason == "" {
+			reason = "the required program policy snapshot is unavailable"
+		}
+		return TargetResult{Code: policy.CodeUnavailable, Reason: reason}
+	}
+	decision := scope.ProgramPolicy.CheckURL(raw)
+	if decision.Allowed {
+		return TargetResult{}
+	}
+	t, _ := urlTarget(raw)
+	return TargetResult{Code: decision.Code, Host: t.Host, Port: t.Port, Reason: decision.Reason}
 }
 
 // checkRedirectHop runs the gate decision on one hop, from the URL that
