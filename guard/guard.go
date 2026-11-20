@@ -1,10 +1,10 @@
-// Package guard implements the safety boundary layer (docs §11): an audit log,
-// user-configured intercept-rule evaluation, and Observer/G5 failure attribution.
+// Package guard implements the task execution safety layer: mandatory
+// ProgramPolicy enforcement for policy-bound tasks, optional target approval,
+// user-configured intercept rules, audit logging and Observer/G5 attribution.
 // Every tool call passes through the PreToolUse hook before executing.
-// (The RoE authorization-scope mechanism was removed; a replacement may be added
-// later.) Destructive/exfil gating is no longer hard-coded here — it lives in the
-// DB intercept rules (seeded as ordinary [built-in] rules, so users can disable or
-// delete them), evaluated via applyIntercept.
+// Destructive/exfil gating also remains represented by configurable DB rules;
+// those rules cannot override ProgramPolicy.
+
 package guard
 
 import (
