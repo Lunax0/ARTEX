@@ -292,6 +292,7 @@ export const api = {
     coverageEnabled?: boolean;
     interceptRules?: AssetInterceptRuleInput[];
     credentials?: TaskCredentialInput[];
+    programPolicy?: Record<string, unknown>;
   }) =>
     post<Task>("/tasks", {
       name: input.name ?? "",
@@ -308,6 +309,7 @@ export const api = {
       coverage_enabled: input.coverageEnabled ?? true, // on by default; false disables the asset coverage feature
       intercept_rules: input.interceptRules ?? [], // task-level asset interception rules
       credentials: input.credentials ?? [], // test accounts declared at creation; an empty password = the agent generates and records it (#3)
+      ...(input.programPolicy ? { program_policy: input.programPolicy } : {}),
     }),
   taskCategories: () => get<{ categories: TaskCategory[] }>("/task-categories").then((r) => arr(r.categories)),
   updateTask: (id: string, input: { name?: string; pinned?: boolean }) => patch<Task>(`/tasks/${id}`, input),
