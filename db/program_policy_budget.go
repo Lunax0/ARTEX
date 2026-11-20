@@ -56,25 +56,25 @@ func (d *DB) AcquireProgramPolicyBudget(ctx context.Context, key string, limits 
 		}
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO program_policy_budget_state
-    (budget_key, requests_per_second, burst, max_concurrency, tokens, refilled_at, updated_at)
-VALUES ($1,$2,$3,$4,$5,now(),now())
-ON CONFLICT (budget_key) DO NOTHING`, key, limits.RequestsPerSecond, limits.Burst, limits.MaxConcurrency, float64(limits.Burst))
+    (budget_key, requests_per_second, burst, max_concurrency, request_timeout_seconds, max_retries, tokens, refilled_at, updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,now(),now())
+ON CONFLICT (budget_key) DO NOTHING`, key, limits.RequestsPerSecond, limits.Burst, limits.MaxConcurrency, limits.RequestTimeoutSecond, limits.MaxRetries, float64(limits.Burst))
 		if err != nil {
 			_ = tx.Rollback()
 			return nil, err
 		}
 		var rps, tokens float64
-		var burst, maxConcurrency int
+		var burst, maxConcurrency, requestTimeout, maxRetries int
 		var refilledAt time.Time
 		err = tx.QueryRowContext(ctx, `
-SELECT requests_per_second, burst, max_concurrency, tokens, refilled_at
+SELECT requests_per_second, burst, max_concurrency, request_timeout_seconds, max_retries, tokens, refilled_at
 FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
 			Scan(&rps, &burst, &maxConcurrency, &tokens, &refilledAt)
 		if err != nil {
 			_ = tx.Rollback()
 			return nil, err
 		}
-		if rps != limits.RequestsPerSecond || burst != limits.Burst || maxConcurrency != limits.MaxConcurrency {
+		if rps != limits.RequestsPerSecond || burst != limits.Burst || maxConcurrency != limits.MaxConcurrency || requestTimeout != limits.RequestTimeoutSecond || maxRetries != limits.MaxRetries {
 			_ = tx.Rollback()
 			return nil, errors.New("ProgramPolicy shared budget key was reused with different limits")
 		}
@@ -153,17 +153,17 @@ func (d *DB) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits
 			return err
 		}
 		var rps, tokens float64
-		var burst int
+		var burst, requestTimeout, maxRetries int
 		var refilledAt time.Time
 		err = tx.QueryRowContext(ctx, `
-SELECT requests_per_second, burst, tokens, refilled_at
+SELECT requests_per_second, burst, request_timeout_seconds, max_retries, tokens, refilled_at
 FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
 			Scan(&rps, &burst, &tokens, &refilledAt)
 		if err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("ProgramPolicy budget state unavailable: %w", err)
 		}
-		if rps != limits.RequestsPerSecond || burst != limits.Burst {
+		if rps != limits.RequestsPerSecond || burst != limits.Burst || requestTimeout != limits.RequestTimeoutSecond || maxRetries != limits.MaxRetries {
 			_ = tx.Rollback()
 			return errors.New("ProgramPolicy shared budget key was reused with different limits")
 		}
