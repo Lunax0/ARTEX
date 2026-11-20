@@ -478,6 +478,14 @@ func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits poli
 		return zero, errors.New("egress: ProgramPolicy request has no valid HTTP(S) target URL")
 	}
 	if scope, ok := intercept.TargetScopeFromContext(ctx); ok && scope.ProgramPolicyRequired {
+		if scope.ProgramPolicyCheck == nil {
+			var zero T
+			return zero, errors.New("egress: ProgramPolicy revocation check is unavailable")
+		}
+		if err := scope.ProgramPolicyCheck(ctx); err != nil {
+			var zero T
+			return zero, err
+		}
 		if scope.ProgramPolicyAcquire == nil {
 			var zero T
 			return zero, errors.New("egress: shared ProgramPolicy budget is unavailable")
@@ -488,6 +496,12 @@ func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits poli
 			return zero, err
 		}
 		defer release()
+		// The policy may have been revoked while this call waited for its shared
+		// rate/concurrency budget. Recheck immediately before invoking the tool.
+		if err := scope.ProgramPolicyCheck(ctx); err != nil {
+			var zero T
+			return zero, err
+		}
 		return fn()
 	}
 	g, err := programGovernor(digest, limits)
