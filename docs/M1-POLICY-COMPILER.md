@@ -105,7 +105,8 @@ Policy-bound WebFetch calls use a mandatory egress governor keyed by `program_id
 - The initial WebFetch request consumes one token in `PolicyDo`.
 - Every redirect that is allowed by ProgramPolicy (and by Target Gate, when enabled) consumes another token in `PolicyWait` before net/http follows it.
 - A redirect denied by scope, awaiting human approval, or missing its budget callback is not followed. It does not consume a request token.
-- Reusing one policy revision key with different rate/burst/concurrency/retry limits fails closed rather than silently retaining stale limits.
+- Reusing one policy revision key with any different request limits (including timeout) fails closed rather than silently retaining stale limits.
+- Governor state is process-local and in-memory: tasks in one ARTEX process share it, but separate ARTEX replicas do not, and a process restart resets the token bucket. A database-backed/distributed budget is still required before horizontal scaling.
 - `max_retries` is validated and stored in the governor profile, but WebFetch's wrapper does not expose response status to the governor; automatic 429/503 retries are not implemented.
 
-The budget now covers the initial request and each followed redirect hop for the supported WebFetch path. It is not a complete network sandbox: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
+The budget now covers the initial request and each followed redirect hop for the supported WebFetch path within one ARTEX process. It is not a complete network sandbox or a distributed rate limiter: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
