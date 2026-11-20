@@ -842,6 +842,24 @@ func (i *Interceptor) Log(ctx context.Context, convID int64, dec Decision, toolN
 	}
 }
 
+// LogProgramPolicy records a mandatory ProgramPolicy allow/deny decision
+// with explicit system provenance. The supplied input must already be
+// sanitized; callers must not persist credentials, cookies or raw query data.
+func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec Decision, toolName string, safeInput []byte, status string) {
+	if i.db == nil {
+		return
+	}
+	taskID, agentName := taskInfoFromCtx(ctx)
+	if taskID == "" {
+		return
+	}
+	audit := auditFor(ctx, dec, safeInput, status)
+	id, err := i.db.CreateProgramPolicyDecision(convID, taskID, agentName, toolName, safeInput, status, dec.Message, audit)
+	if err == nil {
+		i.bindResult(ctx, id, audit)
+	}
+}
+
 // HandleAsk creates a pending approval record and blocks until the user decides
 // (via /api/intercept/pending/{id}/decide) or the per-rule timeout elapses.
 // Returns true if the user approved.
