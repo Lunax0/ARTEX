@@ -59,8 +59,22 @@ func TestProgramPolicyEventRoundTrip(t *testing.T) {
 	if got.CreatedAt.IsZero() {
 		t.Fatal("created_at was not populated by the database")
 	}
-	rows, err := d.ListTaskProgramPolicyEvents(taskID, 1)
-	if err != nil || len(rows) != 1 || rows[0].ID != id {
+	dialID, err := d.CreateProgramPolicyEvent(ProgramPolicyEvent{
+		TaskID: taskID, ToolName: "WebFetch.Dial", DecisionCode: "POLICY_ALLOWED",
+		Action: "allow", EventPhase: "dial", TargetAuthority: "api.example.test:443",
+		ResolvedIPs: []string{"203.0.113.8"}, PolicyDigest: digest,
+		ExecutionStatus: "unknown", Reason: "resolved address passed policy",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dialEvent, err := d.GetProgramPolicyEvent(dialID)
+	if err != nil || dialEvent == nil || dialEvent.EventPhase != "dial" ||
+		len(dialEvent.ResolvedIPs) != 1 || dialEvent.ResolvedIPs[0] != "203.0.113.8" {
+		t.Fatalf("dial event round trip: %+v err=%v", dialEvent, err)
+	}
+	rows, err := d.ListTaskProgramPolicyEvents(taskID, 2)
+	if err != nil || len(rows) != 2 {
 		t.Fatalf("list events: %+v err=%v", rows, err)
 	}
 	if _, err := d.ListTaskProgramPolicyEvents(" ", 10); err == nil {
