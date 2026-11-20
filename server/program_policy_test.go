@@ -78,8 +78,9 @@ func TestCreateTaskApprovesAndPersistsProgramPolicy(t *testing.T) {
 	if err := json.Unmarshal(stored.ProgramPolicyJSON, &snapshot); err != nil {
 		t.Fatalf("stored policy JSON: %v", err)
 	}
-	if snapshot.ApprovedBy != "ARTEX" {
-		t.Fatalf("approved_by = %q, want authenticated JWT subject ARTEX", snapshot.ApprovedBy)
+	wantApprover := jwtSubject(g.token, g.s.jwtKey)
+	if wantApprover == "" || snapshot.ApprovedBy != wantApprover {
+		t.Fatalf("approved_by = %q, want authenticated JWT subject %q", snapshot.ApprovedBy, wantApprover)
 	}
 	if snapshot.ApprovedAt.Before(now.Add(-time.Minute)) || snapshot.RetrievedAt.Before(now.Add(-time.Minute)) {
 		t.Fatalf("client-controlled approval timestamps were not replaced: approved=%s retrieved=%s", snapshot.ApprovedAt, snapshot.RetrievedAt)
