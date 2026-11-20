@@ -657,7 +657,7 @@ func TestProgramPolicyDialRechecksRevocationAfterResolution(t *testing.T) {
 	checks := 0
 	scope.ProgramPolicyCheck = func(context.Context) error {
 		checks++
-		if checks >= 2 {
+		if checks >= 3 {
 			return errors.New("policy source revoked during DNS resolution")
 		}
 		return nil
@@ -667,7 +667,7 @@ func TestProgramPolicyDialRechecksRevocationAfterResolution(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) {
 		t.Fatalf("revocation during DNS resolution did not stop the connection: %v", err)
 	}
-	if checks < 2 || len(rec.calls()) != 0 || hits.Load() != 0 {
+	if checks < 3 || len(rec.calls()) != 0 || hits.Load() != 0 {
 		t.Fatalf("revocation check count=%d dialled=%v hits=%d", checks, rec.calls(), hits.Load())
 	}
 }
