@@ -51,6 +51,9 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	if e.EventPhase != "decision" && e.EventPhase != "redirect" && e.EventPhase != "dial" {
 		return 0, fmt.Errorf("invalid ProgramPolicy event phase %q", e.EventPhase)
 	}
+	if e.ResolvedIPs == nil {
+		e.ResolvedIPs = []string{}
+	}
 	if len(e.ResolvedIPs) > 32 {
 		return 0, errors.New("ProgramPolicy event contains too many resolved IP addresses")
 	}
@@ -137,7 +140,7 @@ func (d *DB) GetProgramPolicyEvent(id int64) (*ProgramPolicyEvent, error) {
 	var e ProgramPolicyEvent
 	err := d.QueryRow(`SELECT `+programPolicyEventColumns+` FROM program_policy_events WHERE id=$1`, id).
 		Scan(&e.ID, &e.TaskID, &e.ConversationID, &e.AgentName, &e.ToolName,
-			&e.DecisionCode, &e.Action, &e.TargetAuthority, &e.PolicyDigest,
+			&e.DecisionCode, &e.Action, &e.EventPhase, &e.TargetAuthority, &e.ResolvedIPs, &e.PolicyDigest,
 			&e.ExecutionStatus, &e.Reason, &e.Actor, &e.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
