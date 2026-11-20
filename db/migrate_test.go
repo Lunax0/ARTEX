@@ -140,7 +140,7 @@ func assertEmbeddedApplied(t *testing.T, d *DB) []appliedMigration {
 		{5, "0005_traffic_rewrite_rules.sql"}, {6, "0006_activity_outbox.sql"}, {7, "0007_finding_report_state.sql"},
 		{8, "0008_task_program_policy.sql"}, {9, "0009_program_policy_events.sql"}}
 	if len(applied) != len(want) {
-		t.Fatalf("schema_migrations = %+v, want versions 1 to 8", applied)
+		t.Fatalf("schema_migrations = %+v, want versions 1 to 9", applied)
 	}
 	var policyColumn bool
 	if err := d.QueryRow(`SELECT EXISTS (
