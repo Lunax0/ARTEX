@@ -15,6 +15,8 @@ func TestCreateProgramPolicyEventValidatesBeforeDatabase(t *testing.T) {
 		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "", Action: "allow", ExecutionStatus: "unknown"},
 		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "completed"},
 		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", PolicyDigest: "not-a-digest"},
+		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", TargetAuthority: "https://example.test/path"},
+		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", TargetAuthority: "example.test:99999"},
 	}
 	for n, event := range cases {
 		if _, err := d.CreateProgramPolicyEvent(event); err == nil {
