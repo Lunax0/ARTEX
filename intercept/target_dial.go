@@ -173,6 +173,11 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 	}
 	switch ct := c.checked[0]; ct.cover {
 	case coverDerived, coverNameOnly:
+		if scope.ProgramPolicyRequired {
+			// Policy-bound calls must connect to the exact addresses checked above;
+			// never hand the hostname back to the OS resolver.
+			return i.dialAddrs(ctx, network, ct.ips, t.Port)
+		}
 		return i.baseDialer()(ctx, network, addr)
 	default:
 		return i.dialAddrs(ctx, network, ct.ips, t.Port)
