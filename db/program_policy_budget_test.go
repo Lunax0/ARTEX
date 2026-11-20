@@ -142,3 +142,30 @@ func TestProgramPolicyRedirectRequestUsesSharedTokenBucket(t *testing.T) {
 		t.Fatalf("redirect hop bypassed shared token bucket: waited %s", elapsed)
 	}
 }
+
+func TestProgramPolicyBudgetRejectsDifferentProfilesForSameKey(t *testing.T) {
+	d := openBudgetTestDB(t)
+	key := fmt.Sprintf("shared-profile-test-%d", time.Now().UnixNano())
+	t.Cleanup(func() {
+		_, _ = d.Exec("DELETE FROM program_policy_budget_state WHERE budget_key=$1", key)
+	})
+	limits := policy.Limits{
+		RequestsPerSecond: 10, Burst: 5, MaxConcurrency: 2,
+		RequestTimeoutSecond: 10, MaxRetries: 0,
+	}
+	release, err := d.AcquireProgramPolicyBudget(context.Background(), key, limits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	changedTimeout := limits
+	changedTimeout.RequestTimeoutSecond++
+	if _, err := d.AcquireProgramPolicyBudget(context.Background(), key, changedTimeout); err == nil {
+		t.Fatal("same budget key accepted a different request timeout")
+	}
+	changedRetries := limits
+	changedRetries.MaxRetries++
+	if _, err := d.ConsumeProgramPolicyRequest(context.Background(), key, changedRetries); err == nil {
+		t.Fatal("same budget key accepted a different retry limit")
+	}
+}
