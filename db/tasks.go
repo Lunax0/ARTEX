@@ -276,7 +276,12 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 	t.LLMRotate = rotate
 	t.TargetGate = opts.TargetGate != nil && *opts.TargetGate
 	if err := tx.QueryRow(`
-opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {`, opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds, opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
+INSERT INTO tasks(name, category_id, description, goal, exploration_id, llm_profile_id, active_llm_profile_id, timeout_seconds, plan_heartbeat_seconds, plan_quiet_mode, coverage_enabled, llm_rotate, target_gate, program_policy)
+VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+RETURNING id, status, paused, created_at`,
+		opts.Name, opts.CategoryID, description, goal, expID, active, opts.TimeoutSeconds,
+		opts.PlanHeartbeatSeconds, quietMode, coverageEnabled, rotate, t.TargetGate,
+		nullableJSON(opts.ProgramPolicyJSON)).Scan(&t.ID, &t.Status, &t.Paused, &t.CreatedAt); err != nil {
 		return nil, err
 	}
 	if err := insertTaskRelations(tx, t.ID, opts.SourceTaskIDs); err != nil {
