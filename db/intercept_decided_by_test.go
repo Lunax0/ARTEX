@@ -168,7 +168,6 @@ func TestInterceptDecidedBy(t *testing.T) {
 	}
 }
 
-
 func TestProgramPolicyDecisionHasExplicitSystemProvenance(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
