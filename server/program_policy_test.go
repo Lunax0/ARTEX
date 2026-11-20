@@ -177,8 +177,8 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 		_, _ = g.m.PG().Exec("DELETE FROM program_policy_revocations WHERE program_id=$1 AND source_sha256=$2", "revocation-api-test", hex.EncodeToString(source[:]))
 	})
 	reuseRequest := map[string]any{
-		"description": "Attempt to reuse revoked policy source",
-		"goal": "Read-only authorized testing of app.example.com with owned accounts.",
+		"description":    "Attempt to reuse revoked policy source",
+		"goal":           "Read-only authorized testing of app.example.com with owned accounts.",
 		"program_policy": policyInput,
 	}
 	reuseRaw, _ := json.Marshal(reuseRequest)
