@@ -995,6 +995,7 @@ func (t *Task) targetScope(wait time.Duration) intercept.TargetScope {
 		ProgramPolicyRequired: t.ProgramPolicyBound, ProgramPolicy: t.ProgramPolicy, ProgramPolicyError: t.ProgramPolicyError,
 		ProgramPolicyAcquire: t.interceptor.AcquireProgramPolicyBudget,
 		ProgramPolicyWait:    t.interceptor.ConsumeProgramPolicyRequest,
+		ProgramPolicyAudit:   t.interceptor.LogProgramPolicyNetworkEvent,
 	}
 	if t.ProgramPolicyBound {
 		if t.ProgramPolicy == nil {
