@@ -173,6 +173,10 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 	if response["scope"] != "all tasks using this program id and exact source digest" {
 		t.Fatalf("revocation scope not explicit: %v", response)
 	}
+	statusCode, statusResponse := g.do(t, "GET", "/api/program-policy/task/"+firstID+"/status", "")
+	if statusCode != 200 || statusResponse["revoked"] != true || statusResponse["active"] != false {
+		t.Fatalf("revoked policy status not reported: status=%d response=%v", statusCode, statusResponse)
+	}
 	t.Cleanup(func() {
 		_, _ = g.m.PG().Exec("DELETE FROM program_policy_revocations WHERE program_id=$1 AND source_sha256=$2", "revocation-api-test", hex.EncodeToString(source[:]))
 	})
