@@ -117,7 +117,6 @@ func TargetScopeFromContext(ctx context.Context) (s TargetScope, ok bool) {
 	return s, ok
 }
 
-
 // RequestBudgetFunc charges one additional HTTP request made inside a
 // platform-owned client (for example, a followed redirect). The URL is passed
 // for diagnostics; the policy budget itself is shared across all hosts.
