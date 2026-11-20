@@ -92,7 +92,7 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 - Schema v1 has no path/method/account/data-class permissions.
 - The added unit/integration tests have not yet been executed in the pinned Go toolchain/CI.
 
-Do not use this milestone alone to authorize live bounty execution until the P0 tests pass, CI is green, the supported WebFetch enforcement path and its redirect accounting have been independently reviewed, and the remaining network escape paths have been independently reviewed.
+Do not use this milestone alone to authorize live bounty execution. CI is green, but the supported WebFetch enforcement path and redirect accounting still require independent security review; distributed budgets, policy lifecycle/revocation, complete audit events and OS/container egress isolation remain incomplete.
 
 
 ## M1.4 request-budget integration
