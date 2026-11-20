@@ -28,6 +28,7 @@ import (
 	"unicode"
 
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // Profile is one noise level. The zero Profile is off. Later levers (scanner
@@ -406,6 +407,47 @@ func Do[T any](g *Governor, ctx context.Context, u *url.URL, fn func() (T, error
 		return fn()
 	}
 	release, err := g.acquire(ctx, HostKey(u))
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	defer release()
+	return fn()
+}
+
+// policyGovernors are process-wide governors keyed by the immutable policy
+// digest. A single synthetic bucket key is used per digest so requests to
+// different in-scope hosts share the program's RPS and concurrency budget.
+var policyGovernors = struct {
+	sync.Mutex
+	byDigest map[string]*Governor
+}{byDigest: map[string]*Governor{}}
+
+// PolicyDo runs one WebFetch tool invocation under the reviewed program's
+// shared request budget. Unlike the user-selectable noise profiles, these
+// limits are mandatory and apply even when the noise profile is off.
+// The callback may follow redirects internally; those hops are still checked
+// by RedirectCheck and PinnedDialer, but this wrapper accounts for one tool
+// invocation rather than each individual HTTP redirect hop.
+func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits policy.Limits, fn func() (T, error)) (T, error) {
+	if strings.TrimSpace(digest) == "" || limits.RequestsPerSecond <= 0 ||
+		limits.Burst < 1 || limits.MaxConcurrency < 1 {
+		var zero T
+		return zero, errors.New("egress: invalid or missing ProgramPolicy request budget")
+	}
+	policyGovernors.Lock()
+	g := policyGovernors.byDigest[digest]
+	if g == nil {
+		g = New(Profile{
+			Name: "program-policy:" + digest[:min(len(digest), 12)],
+			RPS: limits.RequestsPerSecond, Burst: limits.Burst,
+			MaxPerHost: limits.MaxConcurrency, MaxGlobal: limits.MaxConcurrency,
+			MaxRetries: limits.MaxRetries, BaseDelay: time.Second, MaxDelay: 10 * time.Second,
+		})
+		policyGovernors.byDigest[digest] = g
+	}
+	policyGovernors.Unlock()
+	release, err := g.acquire(ctx, "program:"+digest)
 	if err != nil {
 		var zero T
 		return zero, err
