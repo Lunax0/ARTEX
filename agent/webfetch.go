@@ -25,8 +25,9 @@ import (
 func withWebFetch(ctx context.Context, tools []actool.CoreTool, proxy, caCert string) []actool.CoreTool {
 	scope, scoped := intercept.TargetScopeFromContext(ctx)
 	gated := scoped && scope.Enabled != nil && scope.Enabled()
+	policyBound := scoped && scope.ProgramPolicyRequired
 	webFetch := actool.NewWebFetch(actool.WebFetchConfig{Proxy: proxy, CACert: caCert, CheckRedirect: intercept.RedirectCheck("WebFetch"),
-		DialContext: intercept.PinnedDialer("WebFetch", scoped), DisableDirectRetry: gated})
+		DialContext: intercept.PinnedDialer("WebFetch", scoped), DisableDirectRetry: gated || policyBound})
 	return append(tools[:len(tools):len(tools)], governedFetch{webFetch})
 }
 
