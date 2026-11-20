@@ -1,27 +1,39 @@
-# M1 ProgramPolicy Compiler — Schema v1
+# M1 ProgramPolicy — Schema v1 and Runtime Status
 
-Status: implemented as an isolated compiler/matcher; runtime integration is not complete.  
+Status: **partially integrated; not yet certified for live bounty use**  
 Package: `policy`  
-Branch: `dev/m0-baseline-audit`
+Branch: `dev/m0-baseline-audit`  
+Implementation PR: https://github.com/Lunax0/ARTEX/pull/1
 
 ## Purpose
 
-Convert an operator-reviewed, versioned program scope into an immutable authorization snapshot. The compiler is deliberately deterministic and fail-closed. It does not scrape a program page, infer authorization from discovered assets, or approve a program on the operator's behalf.
+Convert an operator-reviewed Bug Bounty program scope into an immutable authorization snapshot. The compiler is deterministic and fail-closed. It does not scrape policy pages, infer authorization from discovered assets, or approve a program on the operator's behalf.
 
 ## Input contract
 
 `policy.ProgramPolicy` requires:
 
 - `schema_version = 1`
-- stable `program_id` and HTTPS `policy_url`
+- stable `program_id` and absolute HTTPS `policy_url`
 - SHA-256 digest of the exact policy source captured by the operator
-- `retrieved_at`, `approved_at`, `expires_at`, and non-empty `approved_by`
+- `expires_at`
 - at least one explicit `in_scope` rule
-- explicit bounded request limits: RPS, burst, concurrency, timeout and retries
+- bounded request limits: RPS, burst, concurrency, timeout and retries
 
-The compiler rejects an expired snapshot, future retrieval/approval timestamps, malformed source digest, empty scope, unsupported schema version, and out-of-bounds limits.
+The compiler also requires `retrieved_at`, `approved_at`, and `approved_by`. When a policy is attached through `POST /api/tasks`, the server overwrites those three fields with server time and the authenticated JWT subject. Client-supplied approval identity/timestamps are ignored.
 
-The source digest is an attestation supplied by the caller; schema v1 does not fetch or independently hash a remote policy document. The caller must hash the exact saved source before approval.
+The source digest is an operator attestation supplied by the caller; schema v1 does not fetch or independently hash the remote policy page. The operator must hash the exact saved policy text before creating the task. The URL and digest are retained in the immutable snapshot.
+
+## Task binding and persistence
+
+- `POST /api/tasks` accepts an optional `program_policy` object.
+- The server compiles and validates the policy before creating the task.
+- The normalized snapshot is stored in `tasks.program_policy` (JSONB) in migration `0008_task_program_policy.sql`.
+- Legacy tasks with a NULL policy column preserve existing behavior.
+- When a task is loaded or restored, the server recompiles the stored snapshot. Invalid, unsupported or expired snapshots remain policy-bound but fail closed.
+- The snapshot is immutable for the lifetime of the task. There is no in-place refresh/revocation endpoint yet; expiration stops policy-authorized target requests. Use a new task for a changed policy until an audited reapproval workflow exists.
+
+A bounty task must be created with an explicit `program_policy`. The field is optional for ARTEX's non-bounty/legacy task workflows; omission does not create a policy boundary.
 
 ## Asset rule semantics
 
@@ -45,7 +57,7 @@ Schema v1 is host/IP/CIDR based. It does not yet model path-level inclusions/exc
 
 ## Operation semantics
 
-Read-only is the baseline. These operation classes are separate:
+Read-only is the baseline. The compiler defines:
 
 - `read_only`: allowed after the target itself passes scope.
 - `passive_recon`: requires `allow_passive_recon`.
@@ -54,26 +66,30 @@ Read-only is the baseline. These operation classes are separate:
 - `state_change`: requires `allow_state_changes`.
 - `destructive`: requires both `allow_state_changes` and `allow_destructive`.
 
-Unknown operation classes are denied. These are policy labels only until the runtime maps each concrete tool/action to a class; do not treat the compiler package alone as enforcement.
+Runtime mapping is deliberately conservative in this milestone: only built-in `WebFetch` is currently classified as a target-network tool, and it is read-only. Other network-capable tools are blocked rather than assuming a permission flag makes them safe.
 
-## URL and resolved-address checks
+## Runtime enforcement implemented
 
-- `CheckURL` accepts absolute HTTP/HTTPS URLs only, rejects userinfo, invalid hosts and invalid/empty ports, then checks the canonical host and effective port.
-- `CheckTarget` checks an extracted host/IP and optional port.
-- `CheckResolvedIP` first checks the hostname scope, then checks each resolved IP. Private, loopback, link-local, multicast, unspecified and selected special-purpose ranges require an explicit in-scope IP/CIDR rule. An out-of-scope IP/CIDR rule wins.
+For tasks with a valid ProgramPolicy:
 
-The network dialer must call the resolved-address check on the exact addresses it will connect to, after a fresh resolution. A check performed earlier on the URL alone is not sufficient against DNS rebinding.
+1. Both worker Guard and planner/main-agent TargetGuard receive the immutable snapshot through the task scope.
+2. Guard checks ProgramPolicy before user intercept rules and before the optional Target Gate. A user `allow` rule or human pin cannot widen scope.
+3. `WebFetch` must declare exactly one valid HTTP(S) URL. The host and port are checked before the tool runs.
+4. Every redirect hop is checked independently, even when Target Gate is off.
+5. The pinned dialer resolves the hostname freshly, checks every returned address, and dials only the exact IPs it checked. A private, local, excluded or special-purpose answer requires an explicit IP/CIDR rule; out-of-scope IP rules win.
+6. When Target Gate is also enabled, its pin/approval requirement remains an additional control. It does not replace ProgramPolicy.
+7. Configured proxy egress and platform-derived proxy/service endpoints are blocked for policy-bound target requests until the proxy can enforce the same destination policy.
+8. Bash, shell sessions, Monitor, MCP/deferred tools, custom tools and unknown tools are blocked for policy-bound tasks. Known internal/no-target tools remain available; child-task creation and selected global mutation tools are excluded from that allowlist.
 
-## Runtime integration still required
+This deliberately means ReconFTW and other subprocess-based recon are not available to policy-bound tasks yet. They must not be re-enabled until ARTEX has a real OS/container/network egress sandbox that enforces the same policy.
 
-This package is **not yet wired into**:
+## Remaining blockers before live bounty use
 
-1. Task creation, PostgreSQL persistence, task reload, or policy revocation.
-2. `guard.Guard` and every worker/planner/main-agent tool hook.
-3. WebFetch/custom HTTP URL rendering, redirects, pinned dialing and DNS resolution.
-4. MCP/custom tools and browser/network transports.
-5. Bash, interactive shells, ReconFTW and arbitrary subprocess network traffic.
-6. Global per-program/per-host RPS, burst, concurrency, retries and cancellation.
-7. A policy review UI, audit history and expiry/re-approval workflow.
+- Per-program/per-host RPS, burst, concurrency, timeout, retry and cancellation budgets are validated but not yet enforced as one shared governor across all execution paths.
+- Policy decisions are not yet written to a durable policy audit ledger with digest, rule, resolved IP and decision provenance.
+- There is no UI for policy review, source capture, approval, refresh, revocation or expiry notification.
+- There is no policy-aware custom HTTP, browser, MCP or subprocess sandbox. These tools are blocked, not policy-enabled.
+- Schema v1 has no path/method/account/data-class permissions.
+- The added unit/integration tests have not yet been executed in the pinned Go toolchain/CI.
 
-Until these paths are integrated and negative tests prove there is no bypass, do not use this package as the sole authorization boundary for a live bounty task. The current target approval gate remains a separate optional control and must never override ProgramPolicy.
+Do not use this milestone alone to authorize live bounty execution until the P0 tests pass, CI is green, the per-program request governor is implemented, and the remaining network escape paths have been independently reviewed.
