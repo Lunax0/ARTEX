@@ -1682,14 +1682,14 @@ func truncateReply(s string) string {
 }
 
 type createTaskReq struct {
-	Name                 string                `json:"name,omitempty"`              // optional task name; omitted/empty = unnamed
+	Name                 string                `json:"name,omitempty"` // optional task name; omitted/empty = unnamed
 	CategoryID           *int64                `json:"category_id,omitempty"`
 	Description          string                `json:"description"`
 	Goal                 string                `json:"goal"`
-	LLMProfileID         *int64                `json:"llm_profile_id,omitempty"`    // the LLM profile to run this task on; omitted/null = use the active profile
-	LLMProfileIDs        []int64               `json:"llm_profile_ids,omitempty"`   // ordered task-level profile chain; the first entry takes effect initially
-	SourceTaskIDs        []string              `json:"source_task_ids,omitempty"`   // direct, read-only inherited source tasks
-	CompanyIDs           []int64               `json:"company_ids,omitempty"`       // links the company scope and snapshots its current assets; does not copy assets or force intent generation
+	LLMProfileID         *int64                `json:"llm_profile_id,omitempty"`  // the LLM profile to run this task on; omitted/null = use the active profile
+	LLMProfileIDs        []int64               `json:"llm_profile_ids,omitempty"` // ordered task-level profile chain; the first entry takes effect initially
+	SourceTaskIDs        []string              `json:"source_task_ids,omitempty"` // direct, read-only inherited source tasks
+	CompanyIDs           []int64               `json:"company_ids,omitempty"`     // links the company scope and snapshots its current assets; does not copy assets or force intent generation
 	TimeoutSeconds       int                   `json:"timeout_seconds"`
 	LLMRotate            *bool                 `json:"llm_rotate"`                  // distribute worker intents across the ordered profiles
 	PlanHeartbeatSeconds int                   `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
@@ -1794,10 +1794,10 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		Name             : strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
 		SourceTaskIDs    : sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
 		TimeoutSeconds   : req.TimeoutSeconds, PlanHeartbeatSeconds: req.PlanHeartbeatSeconds, PlanQuietMode: req.PlanQuietMode,
-		CoverageEnabled  : req.CoverageEnabled,
-		InterceptRules   : interceptRules,
-		LLMRotate        : req.LLMRotate,
-		TargetGate       : req.TargetGate,
+		CoverageEnabled:   req.CoverageEnabled,
+		InterceptRules:    interceptRules,
+		LLMRotate:         req.LLMRotate,
+		TargetGate:        req.TargetGate,
 		ProgramPolicyJSON: programPolicyJSON,
 	})
 	if err != nil {
