@@ -13,19 +13,19 @@ import (
 // decision. It deliberately contains no raw tool input, URL path, query, headers,
 // cookies, credentials, or model conversation content.
 type ProgramPolicyEvent struct {
-	ID               int64     `json:"id"`
-	TaskID           string    `json:"task_id"`
-	ConversationID   *int64    `json:"conversation_id,omitempty"`
-	AgentName        string    `json:"agent_name"`
-	ToolName         string    `json:"tool_name"`
-	DecisionCode     string    `json:"decision_code"`
-	Action           string    `json:"action"`
-	TargetAuthority  string    `json:"target_authority"`
-	PolicyDigest     string    `json:"policy_digest"`
-	ExecutionStatus  string    `json:"execution_status"`
-	Reason           string    `json:"reason"`
-	Actor            string    `json:"actor"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID              int64     `json:"id"`
+	TaskID          string    `json:"task_id"`
+	ConversationID  *int64    `json:"conversation_id,omitempty"`
+	AgentName       string    `json:"agent_name"`
+	ToolName        string    `json:"tool_name"`
+	DecisionCode    string    `json:"decision_code"`
+	Action          string    `json:"action"`
+	TargetAuthority string    `json:"target_authority"`
+	PolicyDigest    string    `json:"policy_digest"`
+	ExecutionStatus string    `json:"execution_status"`
+	Reason          string    `json:"reason"`
+	Actor           string    `json:"actor"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // CreateProgramPolicyEvent appends a sanitized decision to the dedicated event
