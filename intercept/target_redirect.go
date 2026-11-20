@@ -44,6 +44,14 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 			from = via[len(via)-1].URL.String()
 		}
 		if scoped && scope.ProgramPolicyRequired {
+			if scope.ProgramPolicyCheck == nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the ProgramPolicy revocation check is unavailable"}
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			if err := scope.ProgramPolicyCheck(ctx); err != nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: err.Error()}
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
 			decision := checkProgramPolicyURL(scope, req.URL.String())
 			if decision.Code != "" {
 				return &redirectError{res: decision, from: from, hop: req.URL.String(), scope: scope.scopeName()}
