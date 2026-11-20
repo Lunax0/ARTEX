@@ -152,6 +152,10 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 	if !required {
 		return hook.Result{}
 	}
+	policyDigest := ""
+	if compiled != nil {
+		policyDigest = compiled.Digest()
+	}
 	logPolicyDecision := func(action, code, reason, digest string) {
 		if g.interceptor == nil {
 			return
@@ -176,7 +180,7 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 		}, ev.ToolName, safeInput, status)
 	}
 	block := func(code, reason string) hook.Result {
-		logPolicyDecision("deny", code, reason, compiled.Digest())
+		logPolicyDecision("deny", code, reason, policyDigest)
 		return g.block(ev.ToolName, systemBlockMessage(code+": "+reason), cmd)
 	}
 	if compileErr != "" || compiled == nil {
@@ -205,7 +209,7 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 			return block(decision.Code, decision.Reason)
 		}
 		targetName := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
-		logPolicyDecision("allow", "POLICY_ALLOWED", "read-only WebFetch target "+targetName+" is in the reviewed program scope", compiled.Digest())
+		logPolicyDecision("allow", "POLICY_ALLOWED", "read-only WebFetch target "+targetName+" is in the reviewed program scope", policyDigest)
 		return hook.Result{}
 	}
 	if intercept.IsKnownNoTargetTool(ev.ToolName) {
