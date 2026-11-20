@@ -147,7 +147,7 @@ func TestProgramPolicyRevocationStopsEveryTaskUsingSameSource(t *testing.T) {
 	create := func(description string) string {
 		request := map[string]any{
 			"description":    description,
-			"goal":           "Read-only authorized testing of app.example.com with owned accounts.",
+			"goal":           "Review https://app.example.com/ for reproducible security issues using only owned test accounts and without accessing other users data.",
 			"program_policy": policyInput,
 		}
 		raw, _ := json.Marshal(request)
