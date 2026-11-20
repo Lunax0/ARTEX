@@ -98,7 +98,6 @@ func (g *Guard) SetProgramPolicy(compiled *policy.CompiledPolicy, required bool,
 	g.programPolicyMu.Unlock()
 }
 
-
 func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
 	cmd := toolAuditCommand(ev)
 	if res := g.applyProgramPolicy(ctx, ev, cmd); res.Decision == "block" {
