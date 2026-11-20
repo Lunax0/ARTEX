@@ -49,7 +49,7 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	if e.EventPhase == "" {
 		e.EventPhase = "decision"
 	}
-	if e.EventPhase != "decision" && e.EventPhase != "redirect" && e.EventPhase != "dial" {
+	if e.EventPhase != "decision" && e.EventPhase != "redirect" && e.EventPhase != "dial" && e.EventPhase != "retry" {
 		return 0, fmt.Errorf("invalid ProgramPolicy event phase %q", e.EventPhase)
 	}
 	if e.ResolvedIPs == nil {
