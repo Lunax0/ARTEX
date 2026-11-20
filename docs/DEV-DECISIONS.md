@@ -65,6 +65,9 @@ Track technical verification separately from platform outcomes:
    - Runtime enforcement currently covers WebFetch, redirects and direct DNS/socket egress; policy-bound Bash/shell/MCP/custom/unknown tools are blocked.
    - Contract and limitations: `docs/M1-POLICY-COMPILER.md`.
 3. D02: finish shared per-program request budgets, durable policy audit, policy lifecycle/revocation, and a reviewed OS/container egress boundary before enabling ReconFTW or other subprocess tools.
+   - WebFetch now charges initial requests and redirect hops against a process-local policy governor.
+   - Sanitized ProgramPolicy allow/deny decisions are recorded in intercept history with explicit system provenance.
+   - Distributed budgets, revocation, resolved-IP/per-hop usage audit, and OS/container egress enforcement remain outstanding.
 4. D03: version and offline-test `bug-bounty-hunting` Skill handoffs.
 5. D04: ReconFTW adapter with provenance and no scope expansion.
 6. D05: operation/resource graph and eligibility-aware coverage.
