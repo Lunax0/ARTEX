@@ -1,6 +1,6 @@
 # ARTEX Development Decisions
 
-Status: M0 audit complete; M1 ProgramPolicy runtime slice implemented and CI-green; release certification remains blocked  
+Status: M0 audit complete; M1 ProgramPolicy runtime slice implemented; latest CI run #59 has Go stable, Web, Shell and Python jobs passed, with Go race tests still running; release certification remains blocked  
 Date: 2026-11-20  
 Repository: `Lunax0/ARTEX`  
 Upstream: `BaaRai/ARTEX`
@@ -42,7 +42,7 @@ Track technical verification separately from platform outcomes:
 - Frozen parent: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
 - The fork's `main` remains untouched; all changes are isolated in Draft PR #1.
 - Each subsequent change must remain narrowly scoped, include negative tests, pass CI, and have a rollback path.
-- PR #1 CI run 44707635509 passed pinned Go build, unit/integration suites and race tests. Do not merge the Draft PR until independent security review, remaining P0 gaps and release checks pass.
+- PR #1 CI run 44707635509 passed the initial M1 slice. Latest run #59 (44777060032) has Go stable serial tests, Web, Shell and Python jobs passed; Go race tests are still running. Do not merge the Draft PR until current-head CI is fully green, independent security review, remaining P0 gaps and release checks pass.
 - Upstream synchronization is a separate change, never mixed with feature work.
 
 ## 5. M0 findings that affect sequencing
@@ -50,7 +50,7 @@ Track technical verification separately from platform outcomes:
 - `db/task_scope.go` explicitly describes TaskScope as a coverage/query scope, not an execution boundary.
 - `target_gate` remains opt-in and new tasks default to it being off.
 - `intercept/target_extract.go` documents that target extraction inspects declared tool input; it cannot prevent undeclared connections by itself.
-- The first ProgramPolicy runtime slice now binds reviewed snapshots to tasks, enforces WebFetch host/port scope, redirects and DNS-resolved dial IPs, and blocks unclassified network tools for policy-bound tasks.
+- ProgramPolicy now binds reviewed snapshots to tasks, enforces WebFetch host/port scope, redirects and DNS-resolved dial IPs, blocks unclassified network tools for policy-bound tasks, and fails closed when an allowed initial decision cannot be written to the dedicated audit ledger.
 - The Target Gate and pins remain additional approval controls, not substitutes for ProgramPolicy.
 - `egress` pacing applies to platform-owned HTTP clients; `.env.example` explicitly states Bash-launched tools are not throttled.
 - Coverage ledger, finding evidence checks, retesting, BBOT ingestion, skills, and L3 benchmark infrastructure already exist and should be extended rather than replaced.
@@ -64,11 +64,11 @@ Track technical verification separately from platform outcomes:
    - Task JSONB persistence, server-stamped approval, task reload compilation and Guard binding now exist.
    - Runtime enforcement currently covers WebFetch, redirects and direct DNS/socket egress; policy-bound Bash/shell/MCP/custom/unknown tools are blocked.
    - Contract and limitations: `docs/M1-POLICY-COMPILER.md`.
-3. D02: finish shared per-program request budgets, durable policy audit, policy lifecycle/revocation, and a reviewed OS/container egress boundary before enabling ReconFTW or other subprocess tools.
-   - WebFetch now charges initial requests and redirect hops against a process-local policy governor.
-   - Sanitized ProgramPolicy allow/deny decisions are recorded in intercept history with explicit system provenance.
-   - Distributed budgets, revocation, resolved-IP/per-hop usage audit, and OS/container egress enforcement remain outstanding.
-   - CI run 44707635509 passed all five jobs; see `docs/TEST-PLAN.md`. Passing CI does not certify the policy boundary against adversarial bypasses.
+3. D02: complete the shared request budget, audit and lifecycle contract, and establish a reviewed OS/container egress boundary before enabling ReconFTW or other subprocess tools.
+   - PostgreSQL-backed per-program token buckets and concurrency leases are implemented and tested across independent DB handles.
+   - A dedicated sanitized `program_policy_events` ledger is append-only against ordinary UPDATE/DELETE/TRUNCATE; allowed initial WebFetch decisions fail closed if ledger insertion fails.
+   - In-place policy refresh/revocation, resolved-IP/per-hop usage audit, 429/503 retries, and OS/container egress enforcement remain outstanding.
+   - Latest CI run #59 (44777060032) has Go stable, Web, Shell and Python jobs passed; Go race tests are still running. Passing CI does not certify the policy boundary against adversarial bypasses.
 4. D03: version and offline-test `bug-bounty-hunting` Skill handoffs.
 5. D04: ReconFTW adapter with provenance and no scope expansion.
 6. D05: operation/resource graph and eligibility-aware coverage.
