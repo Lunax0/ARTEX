@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/norma/hook"
 )
 
@@ -39,7 +40,12 @@ type Guard struct {
 	reg         *hook.Registry
 	interceptor *intercept.Interceptor // optional; nil disables user-configured rules
 	targetOnly  bool                   // planner / main agent: built-in deny rules and target gate only, no user rules, no judge, no audit ring
-	gate        targetGate             // the target gate; nil without an interceptor
+	gate        targetGate             // the optional target gate; nil without an interceptor
+
+	programPolicyMu       sync.RWMutex
+	programPolicy         *policy.CompiledPolicy
+	programPolicyRequired bool
+	programPolicyError    string
 }
 
 // New creates a Guard without user-configured intercept rules (used for pentest
@@ -81,8 +87,23 @@ func (g *Guard) setGate(ic *intercept.Interceptor) {
 // Hooks returns the hook registry to attach to an agent session.
 func (g *Guard) Hooks() *hook.Registry { return g.reg }
 
+// SetProgramPolicy installs the immutable policy snapshot for this task. A
+// required policy with a nil/invalid snapshot fails closed. It is set before
+// task agents start and is not a mid-run mutation API.
+func (g *Guard) SetProgramPolicy(compiled *policy.CompiledPolicy, required bool, compileErr string) {
+	g.programPolicyMu.Lock()
+	g.programPolicy = compiled
+	g.programPolicyRequired = required
+	g.programPolicyError = compileErr
+	g.programPolicyMu.Unlock()
+}
+
+
 func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
 	cmd := toolAuditCommand(ev)
+	if res := g.applyProgramPolicy(ctx, ev, cmd); res.Decision == "block" {
+		return res
+	}
 	res := g.applyIntercept(ctx, ev, cmd)
 	if g.targetOnly {
 		// Not recorded on a pass: the audit ring is for the gated worker and chat
@@ -116,6 +137,56 @@ func toolAuditCommand(ev hook.Event) string {
 		return in.Text
 	}
 	return ""
+}
+
+// applyProgramPolicy is the mandatory Bug Bounty authorization layer. It
+// intentionally runs before user intercept rules and before the optional Target
+// Gate, so neither an "allow" rule nor a human pin can expand program scope.
+// Until an OS/container egress sandbox exists, only WebFetch (read-only) and
+// explicitly known internal/no-target tools are available to policy-bound tasks.
+// Bash, shell, MCP, deferred and custom tools fail closed.
+func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd string) hook.Result {
+	g.programPolicyMu.RLock()
+	required, compiled, compileErr := g.programPolicyRequired, g.programPolicy, g.programPolicyError
+	g.programPolicyMu.RUnlock()
+	if !required {
+		return hook.Result{}
+	}
+	block := func(code, reason string) hook.Result {
+		return g.block(ev.ToolName, systemBlockMessage(code+": "+reason), cmd)
+	}
+	if compileErr != "" || compiled == nil {
+		if compileErr == "" {
+			compileErr = "the required policy snapshot is unavailable"
+		}
+		return block(policy.CodeUnavailable, compileErr)
+	}
+
+	scope, scopeOK := intercept.TargetScopeFromContext(ctx)
+	if ev.ToolName == "WebFetch" {
+		if !scopeOK || !scope.ProgramPolicyRequired || scope.ProgramPolicy == nil ||
+			scope.ProgramPolicyError != "" || scope.ProgramPolicy.Digest() != compiled.Digest() {
+			return block(policy.CodeUnavailable, "the task's reviewed policy did not reach the WebFetch execution context")
+		}
+		if decision := compiled.AllowsOperation(policy.OperationReadOnly); !decision.Allowed {
+			return block(decision.Code, decision.Reason)
+		}
+		targets := intercept.ExtractTargets(ev.ToolName, ev.Input)
+		if len(targets) != 1 {
+			return block(policy.CodeInvalidTarget, "WebFetch must declare exactly one valid HTTP(S) target")
+		}
+		target := targets[0]
+		decision := compiled.CheckTarget(target.Host, target.Port)
+		if !decision.Allowed {
+			return block(decision.Code, decision.Reason)
+		}
+		return hook.Result{}
+	}
+	if intercept.IsKnownNoTargetTool(ev.ToolName) {
+		return hook.Result{}
+	}
+	return block(policy.CodeOperationDenied,
+		"tool is not in the policy-safe allowlist; Bash/shell, MCP, deferred, custom and unknown tools are disabled until their network egress is sandboxed")
 }
 
 // targetGate is the approval gate for asset targets, as the guard uses it.
