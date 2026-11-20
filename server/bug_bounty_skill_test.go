@@ -46,7 +46,7 @@ func TestBugBountyHuntingSkillIsDiscoverableAndPolicyBound(t *testing.T) {
 		"needs_follow_up",
 		"ReconFTW",
 	} {
-		if !strings.Contains(flat, marker) {
+		if !strings.Contains(flat, strings.ToLower(marker)) {
 			t.Errorf("bug-bounty-hunting skill missing required marker %q", marker)
 		}
 	}
