@@ -296,6 +296,7 @@ func TestProgramPolicyRedirectFailsClosedWhenBudgetWaitFails(t *testing.T) {
 	ctx := WithTargetScope(context.Background(), TargetScope{
 		TaskID: "77", Enabled: func() bool { return false },
 		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
 	})
 	ctx = WithRequestBudget(ctx, func(context.Context, string) error {
 		return context.DeadlineExceeded
