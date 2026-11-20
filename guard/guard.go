@@ -191,6 +191,16 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 	}
 
 	scope, scopeOK := intercept.TargetScopeFromContext(ctx)
+	if !scopeOK || !scope.ProgramPolicyRequired || scope.ProgramPolicy == nil ||
+		scope.ProgramPolicyError != "" || scope.ProgramPolicy.Digest() != compiled.Digest() {
+		return block(policy.CodeUnavailable, "the task's reviewed policy did not reach the tool execution context")
+	}
+	if scope.ProgramPolicyCheck == nil {
+		return block(policy.CodeUnavailable, "the ProgramPolicy revocation check is unavailable")
+	}
+	if err := scope.ProgramPolicyCheck(ctx); err != nil {
+		return block(policy.CodeUnavailable, err.Error())
+	}
 	if ev.ToolName == "WebFetch" {
 		if !scopeOK || !scope.ProgramPolicyRequired || scope.ProgramPolicy == nil ||
 			scope.ProgramPolicyError != "" || scope.ProgramPolicy.Digest() != compiled.Digest() {
