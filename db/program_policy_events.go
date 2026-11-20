@@ -22,7 +22,9 @@ type ProgramPolicyEvent struct {
 	ToolName        string    `json:"tool_name"`
 	DecisionCode    string    `json:"decision_code"`
 	Action          string    `json:"action"`
+	EventPhase      string    `json:"event_phase"`
 	TargetAuthority string    `json:"target_authority"`
+	ResolvedIPs     []string  `json:"resolved_ips"`
 	PolicyDigest    string    `json:"policy_digest"`
 	ExecutionStatus string    `json:"execution_status"`
 	Reason          string    `json:"reason"`
@@ -42,6 +44,21 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	}
 	if e.Action != "allow" && e.Action != "deny" {
 		return 0, fmt.Errorf("invalid ProgramPolicy event action %q", e.Action)
+	}
+	if e.EventPhase == "" {
+		e.EventPhase = "decision"
+	}
+	if e.EventPhase != "decision" && e.EventPhase != "redirect" && e.EventPhase != "dial" {
+		return 0, fmt.Errorf("invalid ProgramPolicy event phase %q", e.EventPhase)
+	}
+	if len(e.ResolvedIPs) > 32 {
+		return 0, errors.New("ProgramPolicy event contains too many resolved IP addresses")
+	}
+	for _, rawIP := range e.ResolvedIPs {
+		ip := net.ParseIP(strings.TrimSpace(rawIP))
+		if ip == nil {
+			return 0, errors.New("ProgramPolicy event resolved IP must be an IP literal")
+		}
 	}
 	if e.ExecutionStatus != "unknown" && e.ExecutionStatus != "not_executed" {
 		return 0, fmt.Errorf("invalid ProgramPolicy execution status %q", e.ExecutionStatus)
@@ -71,17 +88,17 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	err := d.QueryRow(`
 INSERT INTO program_policy_events
     (task_id, conversation_id, agent_name, tool_name, decision_code, action,
-     target_authority, policy_digest, execution_status, reason, actor)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'system')
+     event_phase, target_authority, resolved_ips, policy_digest, execution_status, reason, actor)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'system')
 RETURNING id`,
 		e.TaskID, conversationID, e.AgentName, e.ToolName, e.DecisionCode,
-		e.Action, e.TargetAuthority, e.PolicyDigest, e.ExecutionStatus, e.Reason,
+		e.Action, e.EventPhase, e.TargetAuthority, e.ResolvedIPs, e.PolicyDigest, e.ExecutionStatus, e.Reason,
 	).Scan(&id)
 	return id, err
 }
 
 const programPolicyEventColumns = `id, task_id, conversation_id, agent_name, tool_name,
-decision_code, action, target_authority, policy_digest, execution_status, reason, actor, created_at`
+decision_code, action, event_phase, target_authority, resolved_ips, policy_digest, execution_status, reason, actor, created_at`
 
 // ListTaskProgramPolicyEvents returns the newest sanitized policy events for one
 // task. The bounded limit prevents an unbounded history read from the API layer.
@@ -106,7 +123,7 @@ FROM program_policy_events WHERE task_id=$1 ORDER BY created_at DESC, id DESC LI
 	for rows.Next() {
 		var e ProgramPolicyEvent
 		if err := rows.Scan(&e.ID, &e.TaskID, &e.ConversationID, &e.AgentName,
-			&e.ToolName, &e.DecisionCode, &e.Action, &e.TargetAuthority,
+			&e.ToolName, &e.DecisionCode, &e.Action, &e.EventPhase, &e.TargetAuthority, &e.ResolvedIPs,
 			&e.PolicyDigest, &e.ExecutionStatus, &e.Reason, &e.Actor, &e.CreatedAt); err != nil {
 			return nil, err
 		}
