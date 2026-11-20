@@ -287,7 +287,7 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 		}
 		return i.baseDialer()(ctx, network, addr)
 	default:
-		return i.dialAddrs(ctx, network, ct.ips, t.Port)
+		return i.dialAddrs(ctx, toolName, network, ct.ips, t.Port, t)
 	}
 }
 
