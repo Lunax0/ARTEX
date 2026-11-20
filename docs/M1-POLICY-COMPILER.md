@@ -28,7 +28,7 @@ The source digest is an operator attestation supplied by the caller; schema v1 d
 
 - `POST /api/tasks` accepts an optional `program_policy` object.
 - The server compiles and validates the policy before creating the task.
-- The normalized snapshot is stored in `tasks.program_policy` (JSONB) in migration `0008_task_program_policy.sql`. Migrations `0009` and `0011` add sanitized decision events and exact-source revocation markers; migration `0010` adds shared per-program request-budget state.
+- The normalized snapshot is stored in `tasks.program_policy` (JSONB) in migration `0008_task_program_policy.sql`. Migrations `0009` and `0011` add sanitized decision events and exact-source revocation markers; migration `0010` adds shared per-program request-budget state; migration `0012` adds redirect/dial phases and resolved-IP evidence.
 - Legacy tasks with a NULL policy column preserve existing behavior.
 - When a task is loaded or restored, the server recompiles the stored snapshot. Invalid, unsupported or expired snapshots remain policy-bound but fail closed.
 - The snapshot is immutable for the lifetime of the task. Exact-source revocation is available through the authenticated `POST /api/program-policy/task/{taskID}/revoke` endpoint; `GET /api/program-policy/task/{taskID}/status` reports active, expired or revoked state. Revocation disables every task sharing that program ID and source digest. Revocation is irreversible. There is no in-place refresh endpoint; expiration stops policy-authorized target requests. A changed policy requires a new task and fresh operator approval.
@@ -118,10 +118,10 @@ The mandatory Guard now records sanitized policy decisions in a dedicated `progr
 
 - New rows use `decision_source=program_policy` and `decided_by=system`; this is distinct from human, rule and model decisions.
 - The persisted request input is deliberately sanitized to the target authority (host:port) only. Raw WebFetch arguments are not copied because they may contain cookies, authorization headers or sensitive query parameters.
-- The policy snapshot digest, decision code, task/conversation, agent/tool, action, target authority, execution status, system actor and timestamp are stored in the dedicated ledger.
+- The policy snapshot digest, decision code, task/conversation, agent/tool, action, event phase, target authority, resolved IPs (for dial events), execution status, system actor and timestamp are stored in the dedicated ledger.
 - Raw tool input, URL path/query, headers, cookies, credentials and model conversation content are excluded.
 - The application exposes no update/delete methods for policy events. This is an application-level write-path convention only, not database-enforced append-only protection or cryptographic tamper evidence; a database role with write privileges can alter rows.
 - The approval/history UI displays a dedicated Program policy source badge and filter.
 - Allowed initial WebFetch calls fail closed if the dedicated event cannot be inserted. Denials remain denied even if audit persistence fails.
 
-The ledger does not yet record resolved IPs, every redirect hop, token-bucket usage or request completion. Exact-source revocation is recorded separately in `program_policy_revocations` with operator identity, reason and timestamp; the secondary `intercept_pending` mirror remains best-effort.
+The ledger now records allowed/denied redirect hops and the resolved IPs checked before each policy-bound socket dial. It still does not record token-bucket usage or request completion. Exact-source revocation is recorded separately in `program_policy_revocations` with operator identity, reason and timestamp; the secondary `intercept_pending` mirror remains best-effort.
