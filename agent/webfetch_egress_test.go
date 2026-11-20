@@ -88,15 +88,20 @@ func TestPolicyBoundWebFetchChargesRedirect(t *testing.T) {
 	source := sha256.Sum256([]byte("policy-bound webfetch redirect budget test " + now.Format(time.RFC3339Nano)))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
 		SchemaVersion: policy.SchemaVersion,
-		ProgramID: "webfetch-redirect-budget-test",
-		PolicyURL: "https://bugcrowd.com/engagements/webfetch-redirect-budget-test",
-		SourceSHA256: hex.EncodeToString(source[:]),
-		RetrievedAt: now, ApprovedAt: now, ExpiresAt: now.Add(time.Hour),
-		ApprovedBy: "test",
-		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: ports}},
+		ProgramID:      "webfetch-redirect-budget-test",
+		PolicyURL:      "https://bugcrowd.com/engagements/webfetch-redirect-budget-test",
+		SourceSHA256:   hex.EncodeToString(source[:]),
+		RetrievedAt:    now,
+		ApprovedAt:     now,
+		ExpiresAt:      now.Add(time.Hour),
+		ApprovedBy:     "test",
+		InScope:        []policy.AssetRule{{Pattern: "127.0.0.1", Ports: ports}},
 		Limits: policy.Limits{
-			RequestsPerSecond: 2, Burst: 1, MaxConcurrency: 1,
-			RequestTimeoutSecond: 5, MaxRetries: 0,
+			RequestsPerSecond:    2,
+			Burst:                1,
+			MaxConcurrency:       1,
+			RequestTimeoutSecond: 5,
+			MaxRetries:           0,
 		},
 	}, now)
 	if err != nil {
