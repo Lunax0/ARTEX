@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -423,30 +424,55 @@ var policyGovernors = struct {
 	byDigest map[string]*Governor
 }{byDigest: map[string]*Governor{}}
 
-// PolicyDo runs one WebFetch tool invocation under the reviewed program's
-// shared request budget. Unlike the user-selectable noise profiles, these
-// limits are mandatory and apply even when the noise profile is off.
-// The callback may follow redirects internally; those hops are still checked
-// by RedirectCheck and PinnedDialer, but this wrapper accounts for one tool
-// invocation rather than each individual HTTP redirect hop.
-func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits policy.Limits, fn func() (T, error)) (T, error) {
-	if strings.TrimSpace(digest) == "" || limits.RequestsPerSecond <= 0 ||
-		limits.Burst < 1 || limits.MaxConcurrency < 1 {
-		var zero T
-		return zero, errors.New("egress: invalid or missing ProgramPolicy request budget")
+// programGovernor returns the process-wide governor for one immutable policy
+// revision. The synthetic host key makes its token bucket and concurrency
+// slots common to every target hostname in that program.
+func programGovernor(digest string, limits policy.Limits) (*Governor, error) {
+	if strings.TrimSpace(digest) == "" || math.IsNaN(limits.RequestsPerSecond) ||
+		math.IsInf(limits.RequestsPerSecond, 0) || limits.RequestsPerSecond <= 0 ||
+		limits.RequestsPerSecond > 1000 || limits.Burst < 1 || limits.Burst > 1000 ||
+		limits.MaxConcurrency < 1 || limits.MaxConcurrency > 128 ||
+		limits.RequestTimeoutSecond < 1 || limits.RequestTimeoutSecond > 600 ||
+		limits.MaxRetries < 0 || limits.MaxRetries > 5 {
+		return nil, errors.New("egress: invalid or missing ProgramPolicy request budget")
+	}
+	profile := Profile{
+		Name: "program-policy:" + digest[:min(len(digest), 12)],
+		RPS: limits.RequestsPerSecond, Burst: limits.Burst,
+		MaxPerHost: limits.MaxConcurrency, MaxGlobal: limits.MaxConcurrency,
+		MaxRetries: limits.MaxRetries, BaseDelay: time.Second, MaxDelay: 10 * time.Second,
 	}
 	policyGovernors.Lock()
-	g := policyGovernors.byDigest[digest]
-	if g == nil {
-		g = New(Profile{
-			Name: "program-policy:" + digest[:min(len(digest), 12)],
-			RPS: limits.RequestsPerSecond, Burst: limits.Burst,
-			MaxPerHost: limits.MaxConcurrency, MaxGlobal: limits.MaxConcurrency,
-			MaxRetries: limits.MaxRetries, BaseDelay: time.Second, MaxDelay: 10 * time.Second,
-		})
-		policyGovernors.byDigest[digest] = g
+	defer policyGovernors.Unlock()
+	if g := policyGovernors.byDigest[digest]; g != nil {
+		old := g.Profile()
+		if old.RPS != profile.RPS || old.Burst != profile.Burst ||
+			old.MaxPerHost != profile.MaxPerHost || old.MaxGlobal != profile.MaxGlobal ||
+			old.MaxRetries != profile.MaxRetries {
+			return nil, errors.New("egress: ProgramPolicy budget identity was reused with different limits")
+		}
+		return g, nil
 	}
-	policyGovernors.Unlock()
+	g := New(profile)
+	policyGovernors.byDigest[digest] = g
+	return g, nil
+}
+
+// PolicyDo runs one WebFetch invocation under the reviewed program's shared
+// request budget. The initial request consumes one token and holds one
+// concurrency slot for the lifetime of the invocation. RedirectCheck charges
+// each additional followed hop with PolicyWait while this slot remains held.
+// These limits are mandatory even when the optional noise profile is off.
+func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits policy.Limits, fn func() (T, error)) (T, error) {
+	if u == nil || u.Host == "" {
+		var zero T
+		return zero, errors.New("egress: ProgramPolicy request has no valid target URL")
+	}
+	g, err := programGovernor(digest, limits)
+	if err != nil {
+		var zero T
+		return zero, err
+	}
 	release, err := g.acquire(ctx, "program:"+digest)
 	if err != nil {
 		var zero T
@@ -454,6 +480,24 @@ func PolicyDo[T any](ctx context.Context, u *url.URL, digest string, limits poli
 	}
 	defer release()
 	return fn()
+}
+
+// PolicyWait charges one additional HTTP request against the same program-wide
+// token bucket. It is intended for redirect hops inside a PolicyDo invocation:
+// the outer invocation already holds the program concurrency slot.
+func PolicyWait(ctx context.Context, digest string, limits policy.Limits) error {
+	g, err := programGovernor(digest, limits)
+	if err != nil {
+		return err
+	}
+	h := g.host("program:" + digest)
+	if err := sleep(ctx, g.reserve(h)); err != nil {
+		return err
+	}
+	g.mu.Lock()
+	h.sent++
+	g.mu.Unlock()
+	return nil
 }
 
 // Transport returns base (nil: http.DefaultTransport) governed by g; off, base
