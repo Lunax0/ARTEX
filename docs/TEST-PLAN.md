@@ -29,7 +29,7 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 
 - `policy/program_test.go`: exact/wildcard semantics, exclusions, ports, CIDR/IP matching, URL parsing, IDNA/trailing-dot normalization, public-suffix wildcard rejection, metadata/expiry, read-only defaults, resolved private addresses, ambiguous numeric hosts, digest stability and detached snapshots.
 - `db/tasks_test.go`: JSONB policy round-trip, legacy NULL behavior and invalid JSON rejection.
-- `db/migrate_test.go`: migration sequence includes `0008_task_program_policy.sql`, `0009_program_policy_events.sql`, `0010_program_policy_shared_budget.sql` and `0011_program_policy_revocations.sql`.
+- `db/migrate_test.go`: migration sequence includes `0008_task_program_policy.sql`, `0009_program_policy_events.sql`, `0010_program_policy_shared_budget.sql` and `0011_program_policy_revocations.sql` and `0012_program_policy_network_audit.sql`.
 - `server/program_policy_test.go`: server-stamped approver/timestamps, task persistence, runtime compilation and invalid policy rejection.
 - These tests passed in PR #1 workflow run 44707635509. Reproduce locally with `go test ./policy ./db ./server` in the pinned Go toolchain and a disposable PostgreSQL database before release.
 
@@ -37,7 +37,8 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 ### ProgramPolicy audit tests
 
 - `db/intercept_decided_by_test.go`: verify ProgramPolicy decisions persist with `decision_source=program_policy`, `decided_by=system`, sanitized target-only input, policy digest metadata, history detail retrieval and combined filters.
-- `db/program_policy_events_test.go`: verify dedicated event persistence, bounded retrieval, validation and rejection of malformed target authorities. The event table currently has application-level insert/list/get APIs, not database-enforced immutability.
+- `db/program_policy_events_test.go`: verify dedicated event persistence, bounded retrieval, validation, redirect/dial event phases, resolved-IP round trip and rejection of malformed target authorities. The event table currently has application-level insert/list/get APIs, not database-enforced immutability.
+- `intercept/target_redirect_test.go` and `intercept/target_dial_test.go`: verify sanitized per-hop redirect and resolved-IP dial audit events; allowed network events fail closed if the audit writer is unavailable.
 - `db/program_policy_revocations_test.go`: verify immutable first revocation attestation, exact-source lookup, idempotency and validation.
 - `server/program_policy_test.go`: verify authenticated revoke/status APIs, reject creation from an already revoked source, and ensure revoking one source disables every task sharing the same program ID + source digest.
 - Guard, redirect and dial paths recheck revocation state; missing or unavailable revocation checks fail closed.
