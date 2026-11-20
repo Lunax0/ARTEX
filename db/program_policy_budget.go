@@ -69,7 +69,7 @@ ON CONFLICT (budget_key) DO NOTHING`, key, limits.RequestsPerSecond, limits.Burs
 		err = tx.QueryRowContext(ctx, `
 SELECT requests_per_second, burst, max_concurrency, request_timeout_seconds, max_retries, tokens, refilled_at
 FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
-			Scan(&rps, &burst, &maxConcurrency, &tokens, &refilledAt)
+			Scan(&rps, &burst, &maxConcurrency, &requestTimeout, &maxRetries, &tokens, &refilledAt)
 		if err != nil {
 			_ = tx.Rollback()
 			return nil, err
@@ -158,7 +158,7 @@ func (d *DB) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits
 		err = tx.QueryRowContext(ctx, `
 SELECT requests_per_second, burst, request_timeout_seconds, max_retries, tokens, refilled_at
 FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
-			Scan(&rps, &burst, &tokens, &refilledAt)
+			Scan(&rps, &burst, &requestTimeout, &maxRetries, &tokens, &refilledAt)
 		if err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("ProgramPolicy budget state unavailable: %w", err)
