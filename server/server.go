@@ -1786,7 +1786,17 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 400, "invalid Bug Bounty program policy: "+err.Error())
 			return
 		}
-		programPolicyJSON, err = json.Marshal(compiled.Snapshot())
+		approved := compiled.Snapshot()
+		revocation, err := s.m.PG().GetProgramPolicyRevocation(r.Context(), approved.ProgramID, approved.SourceSHA256)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "could not verify ProgramPolicy revocation status")
+			return
+		}
+		if revocation != nil {
+			writeErr(w, http.StatusConflict, "this exact Bug Bounty policy source has been revoked; capture and approve the current policy source before creating a task")
+			return
+		}
+		programPolicyJSON, err = json.Marshal(approved)
 		if err != nil {
 			writeErr(w, 500, "could not serialize the approved program policy")
 			return
