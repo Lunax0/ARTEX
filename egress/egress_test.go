@@ -435,6 +435,11 @@ func TestPolicyGovernorRejectsChangedLimitsForSameRevision(t *testing.T) {
 	changed := limits
 	changed.RequestsPerSecond = 3
 	if err := PolicyWait(context.Background(), digest, changed); err == nil {
-		t.Fatal("same policy revision accepted different request limits")
+		t.Fatal("same policy revision accepted a different RPS limit")
+	}
+	changed = limits
+	changed.RequestTimeoutSecond = 10
+	if err := PolicyWait(context.Background(), digest, changed); err == nil {
+		t.Fatal("same policy revision accepted a different timeout limit")
 	}
 }
