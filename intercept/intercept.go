@@ -860,12 +860,15 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 	}
 	executionStatus := "not_executed"
 	if status == "allowed" {
-		executionStatus = "awaiting_result"
+		// ProgramPolicy runs before the tool's completion can be correlated
+		// safely, so do not claim an execution result we cannot prove.
+		executionStatus = "unknown"
 	}
 	// Do not attach user-message/history context to policy decisions. This
 	// record intentionally contains only the policy decision metadata and the
 	// caller-supplied sanitized target authority.
 	audit := &db.InterceptAudit{
+		Correlation: "unavailable", InputDigest: digestInput(safeInput),
 		CapturedAt: time.Now().UTC(), InitialAction: dec.Action,
 		InitialReason: dec.Message, EffectiveAction: dec.Action,
 		DecisionReason: dec.Message, ConfigDigest: dec.ConfigDigest,
