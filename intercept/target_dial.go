@@ -191,6 +191,14 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, n
 // A derived exemption, and a pin that is name-only for this connection, dial
 // the address as received. A stored exemption that holds, and a pin that
 // holds every address of the lookup, dial those addresses and nothing else.
+func auditPolicyDial(ctx context.Context, scope TargetScope, toolName string, target Target, action, code, reason string, ips []string) error {
+	if scope.ProgramPolicyAudit == nil {
+		return errors.New("the ProgramPolicy dial audit writer is unavailable")
+	}
+	authority := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
+	return scope.ProgramPolicyAudit(ctx, "dial", toolName+".Dial", authority, action, code, reason, ips)
+}
+
 func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolName, network, addr string) (net.Conn, error) {
 	input, _ := json.Marshal(map[string]string{"dial": addr})
 	ctx = WithCall(ctx, toolName, input)
@@ -202,12 +210,30 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 	blocked := func(res TargetResult) error {
 		return &dialError{code: res.Code, target: t.String(), reason: res.Reason}
 	}
+	if scope.ProgramPolicyRequired {
+		decision := scope.ProgramPolicy.CheckTarget(t.Host, t.Port)
+		if !decision.Allowed {
+			_ = auditPolicyDial(ctx, scope, toolName, t, "deny", decision.Code, decision.Reason, nil)
+			return nil, blocked(TargetResult{Code: decision.Code, Reason: decision.Reason})
+		}
+	}
 	c := &targetCheck{i: i, ctx: ctx, scope: scope, tool: toolName, input: input, fresh: true}
 	unpinned, res := c.run([]Target{t})
 	if res.Code != "" {
 		return nil, blocked(res)
 	}
 	if len(unpinned) > 0 {
+		if scope.ProgramPolicyRequired {
+			for _, request := range unpinned {
+				for _, ip := range request.ResolvedIPs {
+					decision := scope.ProgramPolicy.CheckResolvedIP(t.Host, t.Port, ip)
+					if !decision.Allowed {
+						_ = auditPolicyDial(ctx, scope, toolName, t, "deny", decision.Code, decision.Reason, request.ResolvedIPs)
+						return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason + " (resolved address " + ip + ")"}
+					}
+				}
+			}
+		}
 		// Wait bound 0: the request is found or created, and the dial does not wait.
 		scope.WaitBound = 0
 		res = i.RequestTargets(ctx, scope, toolName, input, unpinned, nil)
@@ -217,8 +243,19 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 		return nil, blocked(res)
 	}
 	if scope.ProgramPolicyRequired {
+		for _, ip := range c.checked[0].ips {
+			decision := scope.ProgramPolicy.CheckResolvedIP(t.Host, t.Port, ip)
+			if !decision.Allowed {
+				_ = auditPolicyDial(ctx, scope, toolName, t, "deny", decision.Code, decision.Reason, c.checked[0].ips)
+				return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason + " (resolved address " + ip + ")"}
+			}
+		}
 		if err := checkPolicyRevocation(ctx, scope); err != nil {
+			_ = auditPolicyDial(ctx, scope, toolName, t, "deny", policy.CodeUnavailable, err.Error(), c.checked[0].ips)
 			return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: err.Error()}
+		}
+		if err := auditPolicyDial(ctx, scope, toolName, t, "allow", policy.CodeAllowed, "resolved addresses passed ProgramPolicy and Target Gate checks", c.checked[0].ips); err != nil {
+			return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: "the dial audit event could not be persisted: " + err.Error()}
 		}
 	}
 	switch ct := c.checked[0]; ct.cover {
