@@ -355,6 +355,11 @@ func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
 		return
 	}
+	now := time.Now().UTC()
+	if snapshot.RetrievedAt.After(now) || snapshot.ApprovedAt.After(now) {
+		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
+		return
+	}
 	// Validate the snapshot at the instant immediately before its own expiry.
 	// This distinguishes a structurally invalid policy from a valid policy that
 	// has simply expired since the task was created.
@@ -369,7 +374,7 @@ func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not verify ProgramPolicy status")
 		return
 	}
-	expired := !snapshot.ExpiresAt.After(time.Now().UTC())
+	expired := !snapshot.ExpiresAt.After(now)
 	revoked := revocation != nil
 	writeJSON(w, http.StatusOK, map[string]any{
 		"program_id": snapshot.ProgramID, "source_sha256": snapshot.SourceSHA256,
