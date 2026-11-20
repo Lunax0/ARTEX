@@ -155,3 +155,16 @@ func TestProgramPolicyRevocationBlocksTargetAndInternalTools(t *testing.T) {
 		}
 	}
 }
+
+func TestProgramPolicyFailsClosedWithoutRevocationCheck(t *testing.T) {
+	compiled := compiledGuardPolicy(t)
+	g := NewTargetOnly(nil)
+	g.SetProgramPolicy(compiled, true, "")
+	ctx := intercept.WithTargetScope(context.Background(), intercept.TargetScope{
+		TaskID: "77", ProgramPolicyRequired: true, ProgramPolicy: compiled,
+	})
+	if block, msg := callPolicyGuard(g, ctx, "list_assets", `{}`); !block ||
+		!strings.Contains(msg, policy.CodeUnavailable) {
+		t.Fatalf("missing revocation check was not fail-closed: block=%v msg=%q", block, msg)
+	}
+}
