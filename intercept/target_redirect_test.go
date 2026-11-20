@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // Step 1.9: every redirect hop of a platform-owned client goes through the gate.
@@ -226,4 +227,37 @@ func atoiPort(t *testing.T, s string) int {
 		t.Fatalf("port %q", s)
 	}
 	return p
+}
+
+
+func TestProgramPolicyRedirectCheckIsIndependentOfTargetGate(t *testing.T) {
+	compiled := compiledDialPolicy(t)
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiled,
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+
+	if err := hop(ctx, "https://outside.example.org/", "https://app.example.com/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeOutOfScope) {
+		t.Fatalf("out-of-scope redirect was not blocked with Target Gate off: %v", err)
+	}
+	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err != nil {
+		t.Fatalf("in-scope redirect unexpectedly blocked: %v", err)
+	}
+	if err := hop(ctx, "ftp://app.example.com/file", "https://app.example.com/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeInvalidTarget) {
+		t.Fatalf("non-HTTP redirect was not blocked: %v", err)
+	}
+}
+
+func TestProgramPolicyRedirectFailsClosedWhenSnapshotMissing(t *testing.T) {
+	ctx := WithTargetScope(context.Background(), TargetScope{
+		TaskID: "77", Enabled: func() bool { return false }, ProgramPolicyRequired: true,
+		ProgramPolicyError: "stored policy failed validation",
+	})
+	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeUnavailable) {
+		t.Fatalf("missing policy snapshot was not blocked: %v", err)
+	}
 }
