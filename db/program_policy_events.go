@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -46,6 +48,13 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	}
 	if len(e.TargetAuthority) > 512 || len(e.DecisionCode) > 128 || len(e.ToolName) > 128 || len(e.Reason) > 4096 {
 		return 0, errors.New("ProgramPolicy event field exceeds its maximum length")
+	}
+	if e.TargetAuthority != "" {
+		host, portText, err := net.SplitHostPort(e.TargetAuthority)
+		port, portErr := strconv.Atoi(portText)
+		if err != nil || host == "" || portErr != nil || port < 1 || port > 65535 || strings.ContainsAny(host, "/?#@ ") {
+			return 0, errors.New("ProgramPolicy target authority must be a host:port pair without URL data")
+		}
 	}
 	if e.PolicyDigest != "" {
 		decoded, err := hex.DecodeString(e.PolicyDigest)
