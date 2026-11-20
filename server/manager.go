@@ -986,10 +986,9 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 	return t
 }
 
-// targetScope is the approval scope of this task's tool calls for the target
-// gate. wait bounds how long a gated call may wait for a human decision.
-// Enabled reads the task's opt-in flag on every call, so a switch through the
-// API takes effect on the next tool call.
+// targetScope carries this task's immutable ProgramPolicy and optional Target
+// Gate state into planner, worker and main-agent tool contexts. The gate flag is
+// read on every call; ProgramPolicy itself cannot be widened mid-run.
 func (t *Task) targetScope(wait time.Duration) intercept.TargetScope {
 	return intercept.TargetScope{
 		TaskID: t.ID, Enabled: t.targetGate.Load, WaitBound: wait, Interceptor: t.interceptor,
