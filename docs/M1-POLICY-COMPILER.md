@@ -31,7 +31,7 @@ The source digest is an operator attestation supplied by the caller; schema v1 d
 - The normalized snapshot is stored in `tasks.program_policy` (JSONB) in migration `0008_task_program_policy.sql`. Migrations `0009` and `0011` add sanitized decision events and exact-source revocation markers; migration `0010` adds shared per-program request-budget state.
 - Legacy tasks with a NULL policy column preserve existing behavior.
 - When a task is loaded or restored, the server recompiles the stored snapshot. Invalid, unsupported or expired snapshots remain policy-bound but fail closed.
-- The snapshot is immutable for the lifetime of the task. Exact-source revocation is available through the authenticated `POST /api/program-policy/task/{taskID}/revoke` endpoint; it disables every task sharing that program ID and source digest. Revocation is irreversible. There is no in-place refresh endpoint; expiration stops policy-authorized target requests. A changed policy requires a new task and fresh operator approval.
+- The snapshot is immutable for the lifetime of the task. Exact-source revocation is available through the authenticated `POST /api/program-policy/task/{taskID}/revoke` endpoint; `GET /api/program-policy/task/{taskID}/status` reports active, expired or revoked state. Revocation disables every task sharing that program ID and source digest. Revocation is irreversible. There is no in-place refresh endpoint; expiration stops policy-authorized target requests. A changed policy requires a new task and fresh operator approval.
 
 A bounty task must be created with an explicit `program_policy`. The field is optional for ARTEX's non-bounty/legacy task workflows; omission does not create a policy boundary.
 
