@@ -124,6 +124,16 @@ func (i *Interceptor) isDerivedEndpoint(host string, port int) bool {
 	return false
 }
 
+func checkPolicyRevocation(ctx context.Context, scope TargetScope) error {
+	if !scope.ProgramPolicyRequired {
+		return nil
+	}
+	if scope.ProgramPolicyCheck == nil {
+		return errors.New("the ProgramPolicy revocation check is unavailable")
+	}
+	return scope.ProgramPolicyCheck(ctx)
+}
+
 // dialPolicyTarget resolves the hostname once, checks every answer against the
 // immutable program scope, and dials only those exact checked IP addresses.
 // This path is used when the optional Target Gate is off.
@@ -166,6 +176,9 @@ func (i *Interceptor) dialPolicyTarget(ctx context.Context, scope TargetScope, n
 			return nil, &dialError{code: decision.Code, target: t.String(), reason: decision.Reason + " (resolved address " + ip + ")"}
 		}
 	}
+	if err := checkPolicyRevocation(ctx, scope); err != nil {
+		return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: err.Error()}
+	}
 	return i.dialAddrs(ctx, network, ips, t.Port)
 }
 
@@ -201,6 +214,11 @@ func (i *Interceptor) dialTarget(ctx context.Context, scope TargetScope, toolNam
 			res.Reason = notCovered(unpinned[0], scope)
 		}
 		return nil, blocked(res)
+	}
+	if scope.ProgramPolicyRequired {
+		if err := checkPolicyRevocation(ctx, scope); err != nil {
+			return nil, &dialError{code: policy.CodeUnavailable, target: t.String(), reason: err.Error()}
+		}
 	}
 	switch ct := c.checked[0]; ct.cover {
 	case coverDerived, coverNameOnly:
