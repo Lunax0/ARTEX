@@ -91,6 +91,24 @@ const DefaultTargetWaitBound = 300 * time.Second
 // Enabled reports the gate's opt-in flag; nil means the gate is off. WaitBound
 // caps a human decision wait; 0 means never wait. Interceptor owns the gate and
 // its controlled resolver/dialer, so redirect and dial callbacks can reach it.
+// AcquireProgramPolicyBudget obtains a PostgreSQL-backed request token and
+// concurrency lease shared across ARTEX instances.
+func (i *Interceptor) AcquireProgramPolicyBudget(ctx context.Context, key string, limits policy.Limits) (func(), error) {
+	if i == nil || i.db == nil {
+		return nil, errors.New("ProgramPolicy shared budget database is unavailable")
+	}
+	return i.db.AcquireProgramPolicyBudget(ctx, key, limits)
+}
+
+// ConsumeProgramPolicyRequest charges one redirect hop against the shared
+// PostgreSQL-backed token bucket.
+func (i *Interceptor) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits policy.Limits) error {
+	if i == nil || i.db == nil {
+		return errors.New("ProgramPolicy shared budget database is unavailable")
+	}
+	return i.db.ConsumeProgramPolicyRequest(ctx, key, limits)
+}
+
 type TargetScope struct {
 	TaskID         string
 	ConversationID int64
@@ -104,6 +122,8 @@ type TargetScope struct {
 	ProgramPolicyRequired bool
 	ProgramPolicy         *policy.CompiledPolicy
 	ProgramPolicyError    string
+	ProgramPolicyAcquire func(context.Context, string, policy.Limits) (func(), error)
+	ProgramPolicyWait    func(context.Context, string, policy.Limits) error
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the
