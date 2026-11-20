@@ -84,3 +84,5 @@ Track technical verification separately from platform outcomes:
 - Reports remain human-reviewed.
 - Benchmarks must pin corpus version/image digest, prompts, models, budgets, seeds, and independent judge. Report denominators and uncertainty.
 - Never claim improvement in accepted findings or reward until actual platform outcomes establish it.
+
+   - ProgramPolicy audit rows intentionally omit conversational/model context and persist only the sanitized target authority plus policy digest. Allowed decisions use `execution_status=unknown` until the tool result can be correlated; the audit does not claim that an allowed request actually completed.
