@@ -47,14 +47,14 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 		}
 		if scoped && scope.ProgramPolicyRequired {
 			logRedirect := func(action, code, reason string) error {
-				if scope.Interceptor == nil {
-					return errors.New("the ProgramPolicy redirect audit interceptor is unavailable")
+				if scope.ProgramPolicyAudit == nil {
+					return errors.New("the ProgramPolicy redirect audit writer is unavailable")
 				}
 				authority := ""
 				if target, err := urlTarget(req.URL.String()); err == nil {
 					authority = net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
 				}
-				return scope.Interceptor.LogProgramPolicyNetworkEvent(
+				return scope.ProgramPolicyAudit(
 					ctx, "redirect", toolName+".Redirect", authority, action, code, reason, nil,
 				)
 			}
