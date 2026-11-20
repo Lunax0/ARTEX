@@ -26,9 +26,9 @@ import (
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/egress"
 	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/artex/report"
 	"github.com/Autumn-27/artex/traffic"
 	"github.com/Autumn-27/norma/llm"
@@ -1682,27 +1682,27 @@ func truncateReply(s string) string {
 }
 
 type createTaskReq struct {
-	Name                 string   `json:"name,omitempty"` // optional task name; omitted/empty = unnamed
-	CategoryID           *int64   `json:"category_id,omitempty"`
-	Description          string   `json:"description"`
-	Goal                 string   `json:"goal"`
-	LLMProfileID         *int64   `json:"llm_profile_id,omitempty"`  // the LLM profile to run this task on; omitted/null = use the active profile
-	LLMProfileIDs        []int64  `json:"llm_profile_ids,omitempty"` // ordered task-level profile chain; the first entry takes effect initially
-	SourceTaskIDs        []string `json:"source_task_ids,omitempty"` // direct, read-only inherited source tasks
-	CompanyIDs           []int64  `json:"company_ids,omitempty"`     // links the company scope and snapshots its current assets; does not copy assets or force intent generation
-	TimeoutSeconds       int      `json:"timeout_seconds"`
-	LLMRotate            *bool    `json:"llm_rotate"`                  // distribute worker intents across the ordered profiles
-	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
-	PlanQuietMode        *bool    `json:"plan_quiet_mode,omitempty"`   // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
-	TargetGate           *bool    `json:"target_gate,omitempty"`       // approval gate for asset targets, opt-in; omitted/null = off
-	ProgramPolicy        *policy.ProgramPolicy `json:"program_policy,omitempty"` // reviewed Bug Bounty scope; server stamps approver/timestamps
-	SeedFirstIntent      *bool    `json:"seed_first_intent,omitempty"` // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
-	CoverageEnabled      *bool    `json:"coverage_enabled,omitempty"`  // asset coverage feature; omitted/null = default on (true). false = disables coverage calculation/display/auto-accumulated scope + hides add_task_scope/list_untested_assets. company links are unaffected.
+	Name                 string                 `json:"name,omitempty"`              // optional task name; omitted/empty = unnamed
+	CategoryID           *int64                 `json:"category_id,omitempty"`      
+	Description          string                 `json:"description"`                
+	Goal                 string                 `json:"goal"`                       
+	LLMProfileID         *int64                 `json:"llm_profile_id,omitempty"`    // the LLM profile to run this task on; omitted/null = use the active profile
+	LLMProfileIDs        []int64                `json:"llm_profile_ids,omitempty"`   // ordered task-level profile chain; the first entry takes effect initially
+	SourceTaskIDs        []string               `json:"source_task_ids,omitempty"`   // direct, read-only inherited source tasks
+	CompanyIDs           []int64                `json:"company_ids,omitempty"`       // links the company scope and snapshots its current assets; does not copy assets or force intent generation
+	TimeoutSeconds       int                    `json:"timeout_seconds"`            
+	LLMRotate            *bool                  `json:"llm_rotate"`                  // distribute worker intents across the ordered profiles
+	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
+	PlanQuietMode        *bool                  `json:"plan_quiet_mode,omitempty"`   // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
+	TargetGate           *bool                  `json:"target_gate,omitempty"`       // approval gate for asset targets, opt-in; omitted/null = off
+	ProgramPolicy        *policy.ProgramPolicy  `json:"program_policy,omitempty"`    // reviewed Bug Bounty scope; server stamps approver/timestamps
+	SeedFirstIntent      *bool                  `json:"seed_first_intent,omitempty"` // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
+	CoverageEnabled      *bool                  `json:"coverage_enabled,omitempty"`  // asset coverage feature; omitted/null = default on (true). false = disables coverage calculation/display/auto-accumulated scope + hides add_task_scope/list_untested_assets. company links are unaffected.
 	// InterceptRules: task-level asset interception/allow rules (entered at creation, stored in task_intercept_rules, never the global table).
-	InterceptRules []taskInterceptRuleReq `json:"intercept_rules,omitempty"`
+	InterceptRules       []taskInterceptRuleReq `json:"intercept_rules,omitempty"`  
 	// Credentials: test accounts declared at creation (#3). An empty password means
 	// "agent generates": the agent registers that account and records it back.
-	Credentials []taskCredentialReq `json:"credentials,omitempty"`
+	Credentials          []taskCredentialReq    `json:"credentials,omitempty"`      
 }
 
 type taskCredentialReq struct {
@@ -1791,13 +1791,13 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	t, err := s.m.CreateTaskWithOptions(req.Description, req.Goal, db.TaskCreateOptions{
-		Name: strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
-		SourceTaskIDs: sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
-		TimeoutSeconds: req.TimeoutSeconds, PlanHeartbeatSeconds: req.PlanHeartbeatSeconds, PlanQuietMode: req.PlanQuietMode,
-		CoverageEnabled: req.CoverageEnabled,
-		InterceptRules:  interceptRules,
-		LLMRotate:       req.LLMRotate,
-		TargetGate:      req.TargetGate,
+		Name             : strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
+		SourceTaskIDs    : sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
+		TimeoutSeconds   : req.TimeoutSeconds, PlanHeartbeatSeconds: req.PlanHeartbeatSeconds, PlanQuietMode: req.PlanQuietMode,
+		CoverageEnabled  : req.CoverageEnabled,
+		InterceptRules   : interceptRules,
+		LLMRotate        : req.LLMRotate,
+		TargetGate       : req.TargetGate,
 		ProgramPolicyJSON: programPolicyJSON,
 	})
 	if err != nil {
