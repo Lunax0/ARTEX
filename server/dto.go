@@ -63,7 +63,11 @@ type TaskDTO struct {
 	CompanyIDs         []int64            `json:"company_ids"`
 	CoverageEnabled    bool               `json:"coverage_enabled"` // asset coverage feature switch (fixed at creation)
 	PlanQuietMode      bool               `json:"plan_quiet_mode"`  // planner quiet-mode switch (#86), editable mid-run
-	TargetGate         bool               `json:"target_gate"`      // approval gate for asset targets, opt-in, editable mid-run
+	TargetGate              bool   `json:"target_gate"`      // optional approval gate for asset targets
+	ProgramPolicyBound      bool   `json:"program_policy_bound"`
+	ProgramPolicyValid      bool   `json:"program_policy_valid"`
+	ProgramPolicyDigest     string `json:"program_policy_digest,omitempty"`
+	ProgramPolicyExpiresAt  string `json:"program_policy_expires_at,omitempty"`
 }
 
 // FindingSeverityDTO is the per-severity finding count shown in the task list (critical/high/medium/low).
@@ -119,6 +123,11 @@ func taskDTO(t *Task, status string) TaskDTO {
 		sourceIDs = append(sourceIDs, i64s(id))
 	}
 	profileIDs := append(make([]int64, 0, len(llmState.ProfileIDs)), llmState.ProfileIDs...)
+	policyDigest, policyExpiresAt := "", ""
+	if t.ProgramPolicy != nil {
+		policyDigest = t.ProgramPolicy.Digest()
+		policyExpiresAt = rfc3339(t.ProgramPolicy.Snapshot().ExpiresAt)
+	}
 	return TaskDTO{
 		ID:                 t.ID,
 		ExplorationID:      t.ExpID,
@@ -146,7 +155,11 @@ func taskDTO(t *Task, status string) TaskDTO {
 		CompanyIDs:         lifecycle.CompanyIDs,
 		CoverageEnabled:    t.CoverageEnabled,
 		PlanQuietMode:      t.PlanQuietMode,
-		TargetGate:         t.targetGate.Load(),
+		TargetGate:             t.targetGate.Load(),
+		ProgramPolicyBound:     t.ProgramPolicyBound,
+		ProgramPolicyValid:     t.ProgramPolicyBound && t.ProgramPolicy != nil && t.ProgramPolicyError == "",
+		ProgramPolicyDigest:    policyDigest,
+		ProgramPolicyExpiresAt: policyExpiresAt,
 	}
 }
 
