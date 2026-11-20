@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"time"
 
 	"github.com/Autumn-27/artex/egress"
 	"github.com/Autumn-27/artex/intercept"
@@ -56,6 +57,17 @@ func (f governedFetch) Call(ctx context.Context, input json.RawMessage, tc *acto
 	u, err := url.Parse(in.URL)
 	if err != nil || u.Host == "" {
 		return f.CoreTool.Call(ctx, input, tc) // the tool reports the bad URL
+	}
+	if scope, ok := intercept.TargetScopeFromContext(ctx); ok && scope.ProgramPolicyRequired {
+		if scope.ProgramPolicy == nil || scope.ProgramPolicyError != "" {
+			return actool.Errorf("ARTEX policy control: the required Bug Bounty policy is unavailable; request blocked"), nil
+		}
+		limits := scope.ProgramPolicy.Snapshot().Limits
+		bounded, cancel := context.WithTimeout(ctx, time.Duration(limits.RequestTimeoutSecond)*time.Second)
+		defer cancel()
+		return egress.PolicyDo(bounded, u, scope.ProgramPolicy.Digest(), limits, func() (actool.Result, error) {
+			return f.CoreTool.Call(bounded, input, tc)
+		})
 	}
 	return egress.Do(egressGovernor(), ctx, u, func() (actool.Result, error) {
 		return f.CoreTool.Call(ctx, input, tc)
