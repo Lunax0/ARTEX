@@ -220,9 +220,9 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 		}
 	}
 	// Only then are the names resolved, and the rules matched on the addresses.
-// A name the configuration exempts is never resolved in legacy gate-only
-// scopes; policy-bound scopes reject derived service/proxy exemptions and
-// resolve every target name that is permitted to proceed.
+	// A name the configuration exempts is never resolved in legacy gate-only
+	// scopes; policy-bound scopes reject derived service/proxy exemptions and
+	// resolve every target name that is permitted to proceed.
 	for _, ct := range checked {
 		if ct.Kind != TargetDomain || ex.derived[db.TargetKey(ct.Host, ct.Port)] && !c.scope.ProgramPolicyRequired {
 			continue
