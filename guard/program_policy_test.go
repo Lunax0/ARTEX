@@ -59,8 +59,9 @@ func TestProgramPolicyAppliesWhenTargetGateIsOff(t *testing.T) {
 	g.SetProgramPolicy(compiled, true, "")
 	ctx := policyGuardContext(compiled, nil) // no Target Gate opt-in
 
-	if block, msg := callPolicyGuard(g, ctx, "WebFetch", `{"url":"https://api.example.net/v1"}`); block {
-		t.Fatalf("in-scope WebFetch blocked with Target Gate off: %s", msg)
+	if block, msg := callPolicyGuard(g, ctx, "WebFetch", `{"url":"https://api.example.net/v1"}`); !block ||
+		!strings.Contains(msg, policy.CodeUnavailable) {
+		t.Fatalf("in-scope WebFetch without a durable audit store must fail closed: block=%v msg=%q", block, msg)
 	}
 	if block, msg := callPolicyGuard(g, ctx, "WebFetch", `{"url":"https://outside.example.org/"}`); !block ||
 		!strings.Contains(msg, policy.CodeOutOfScope) {
