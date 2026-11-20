@@ -891,7 +891,9 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 	}
 	_, eventErr := i.db.CreateProgramPolicyEvent(db.ProgramPolicyEvent{
 		TaskID: taskID, ConversationID: func() *int64 {
-			if convID > 0 { return &convID }
+			if convID > 0 {
+				return &convID
+			}
 			return nil
 		}(),
 		AgentName: agentName, ToolName: toolName, DecisionCode: dec.PolicyCode,
