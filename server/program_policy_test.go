@@ -111,7 +111,7 @@ func TestCreateTaskRejectsInvalidProgramPolicy(t *testing.T) {
 			"policy_url":     "https://bugcrowd.com/engagements/invalid-policy-test",
 			"source_sha256":  "not-a-sha256",
 			"expires_at":     time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
-			"in_scope": []any{map[string]any{"pattern": "*.com"}},
+			"in_scope":       []any{map[string]any{"pattern": "*.com"}},
 			"limits": map[string]any{
 				"requests_per_second":     1,
 				"burst":                   1,
