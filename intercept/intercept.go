@@ -116,6 +116,41 @@ func (i *Interceptor) CheckProgramPolicyRevocation(ctx context.Context, programI
 	return nil
 }
 
+// LogProgramPolicyNetworkEvent appends one sanitized redirect or resolved-dial
+// event. Allowed network events must be durable before the request proceeds.
+func (i *Interceptor) LogProgramPolicyNetworkEvent(ctx context.Context, phase, toolName, targetAuthority, action, decisionCode, reason string, resolvedIPs []string) error {
+	if i == nil || i.db == nil {
+		return errors.New("ProgramPolicy network audit database is unavailable")
+	}
+	taskID, agentName := taskInfoFromCtx(ctx)
+	scope, scoped := TargetScopeFromContext(ctx)
+	if taskID == "" && scoped {
+		taskID = scope.TaskID
+	}
+	if taskID == "" {
+		return errors.New("ProgramPolicy network audit has no task identity")
+	}
+	digest := ""
+	if scoped && scope.ProgramPolicy != nil {
+		digest = scope.ProgramPolicy.Digest()
+	}
+	var conversationID *int64
+	if id := ConvIDFromContext(ctx); id > 0 {
+		conversationID = &id
+	}
+	executionStatus := "not_executed"
+	if action == "allow" {
+		executionStatus = "unknown"
+	}
+	_, err := i.db.CreateProgramPolicyEvent(db.ProgramPolicyEvent{
+		TaskID: taskID, ConversationID: conversationID, AgentName: agentName,
+		ToolName: toolName, DecisionCode: decisionCode, Action: action,
+		EventPhase: phase, TargetAuthority: targetAuthority, ResolvedIPs: resolvedIPs,
+		PolicyDigest: digest, ExecutionStatus: executionStatus, Reason: reason,
+	})
+	return err
+}
+
 // ConsumeProgramPolicyRequest charges one redirect hop against the shared
 // PostgreSQL-backed token bucket.
 func (i *Interceptor) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits policy.Limits) error {
