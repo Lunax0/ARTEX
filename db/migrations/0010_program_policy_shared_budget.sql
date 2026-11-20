@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS program_policy_budget_state (
     burst               INTEGER NOT NULL CHECK (burst > 0),
     max_concurrency     INTEGER NOT NULL CHECK (max_concurrency > 0),
     request_timeout_seconds INTEGER NOT NULL CHECK (request_timeout_seconds BETWEEN 1 AND 600),
-    max_retries         INTEGER NOT NULL CHECK (max_retries BETWEEN 0 AND 10),
+    max_retries         INTEGER NOT NULL CHECK (max_retries BETWEEN 0 AND 5),
     tokens              DOUBLE PRECISION NOT NULL,
     refilled_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
