@@ -19,7 +19,7 @@ func validateProgramPolicyBudget(key string, limits policy.Limits) error {
 		limits.RequestsPerSecond > 1000 || limits.Burst < 1 || limits.Burst > 1000 ||
 		limits.MaxConcurrency < 1 || limits.MaxConcurrency > 128 ||
 		limits.RequestTimeoutSecond < 1 || limits.RequestTimeoutSecond > 600 ||
-		limits.MaxRetries < 0 || limits.MaxRetries > 10 {
+		limits.MaxRetries < 0 || limits.MaxRetries > 5 {
 		return errors.New("invalid ProgramPolicy shared budget identity or limits")
 	}
 	return nil
