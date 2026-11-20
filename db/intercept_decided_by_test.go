@@ -167,3 +167,68 @@ func TestInterceptDecidedBy(t *testing.T) {
 		t.Fatalf("legacy rule row missing from decision_source=rule: %v", got)
 	}
 }
+
+
+func TestProgramPolicyDecisionHasExplicitSystemProvenance(t *testing.T) {
+	d, err := Open(testDSN(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = d.Close() })
+	taskID := "program-policy-audit-" + t.Name()
+	t.Cleanup(func() { _, _ = d.Exec(`DELETE FROM intercept_pending WHERE task_id=$1`, taskID) })
+
+	input := []byte(`{"target":"api.example.com:443"}`)
+	audit := &InterceptAudit{ConfigDigest: "policy-sha256-fixture", ExecutionStatus: "unknown"}
+	id, err := d.CreateProgramPolicyDecision(
+		0, taskID, "worker", "WebFetch", input, "denied",
+		"ProgramPolicy OUT_OF_SCOPE: target is outside reviewed scope", audit,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	row, err := d.GetInterceptPending(id)
+	if err != nil || row == nil {
+		t.Fatalf("GetInterceptPending: row=%+v err=%v", row, err)
+	}
+	if row.Status != "denied" || row.DecisionSource != "program_policy" || row.DecidedBy != "system" {
+		t.Fatalf("wrong policy decision provenance: %+v", row)
+	}
+	if string(row.ToolInput) != string(input) {
+		t.Fatalf("stored sanitized input = %s, want %s", row.ToolInput, input)
+	}
+
+	detail, err := d.GetInterceptDetail(id)
+	if err != nil || detail == nil {
+		t.Fatalf("GetInterceptDetail: detail=%+v err=%v", detail, err)
+	}
+	if detail.DecisionSource != "program_policy" || detail.DecidedBy != "system" ||
+		detail.Audit == nil || detail.Audit.ConfigDigest != audit.ConfigDigest {
+		t.Fatalf("policy audit detail lost provenance or digest: %+v", detail)
+	}
+
+	rows, total, err := d.ListTaskInterceptsPage(taskID, 1, 20, InterceptApprovalFilter{
+		Status: "denied", DecisionSource: "program_policy", DecidedBy: "system",
+	})
+	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != id {
+		t.Fatalf("policy audit filter: total=%d rows=%+v err=%v", total, rows, err)
+	}
+}
+
+func TestProgramPolicyDecisionRejectsInvalidStatusAndMissingTask(t *testing.T) {
+	d := &DB{}
+	for _, tc := range []struct {
+		taskID string
+		status string
+	}{
+		{"task-1", "pending"},
+		{"task-1", "timeout"},
+		{"", "allowed"},
+		{"  ", "denied"},
+	} {
+		if _, err := d.CreateProgramPolicyDecision(0, tc.taskID, "worker", "WebFetch", nil, tc.status, "fixture", nil); err == nil {
+			t.Fatalf("accepted invalid policy audit task=%q status=%q", tc.taskID, tc.status)
+		}
+	}
+}
