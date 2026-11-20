@@ -884,7 +884,7 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 		targetAuthority = safeTarget.Target
 	}
 	action := "deny"
-	executionStatus := "not_executed"
+	executionStatus = "not_executed"
 	if status == "allowed" {
 		action = "allow"
 		executionStatus = "unknown"
