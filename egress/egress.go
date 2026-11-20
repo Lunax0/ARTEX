@@ -443,10 +443,14 @@ func programGovernor(digest string, limits policy.Limits) (*Governor, error) {
 		return nil, errors.New("egress: invalid or missing ProgramPolicy request budget")
 	}
 	profile := Profile{
-		Name: "program-policy:" + digest[:min(len(digest), 12)],
-		RPS: limits.RequestsPerSecond, Burst: limits.Burst,
-		MaxPerHost: limits.MaxConcurrency, MaxGlobal: limits.MaxConcurrency,
-		MaxRetries: limits.MaxRetries, BaseDelay: time.Second, MaxDelay: 10 * time.Second,
+		Name:       "program-policy:" + digest[:min(len(digest), 12)],
+		RPS:        limits.RequestsPerSecond,
+		Burst:      limits.Burst,
+		MaxPerHost: limits.MaxConcurrency,
+		MaxGlobal:  limits.MaxConcurrency,
+		MaxRetries: limits.MaxRetries,
+		BaseDelay:  time.Second,
+		MaxDelay:   10 * time.Second,
 	}
 	policyGovernors.Lock()
 	defer policyGovernors.Unlock()
