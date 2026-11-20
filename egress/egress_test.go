@@ -369,3 +369,72 @@ func TestPolicyDoHonorsCancellationWhileWaiting(t *testing.T) {
 		t.Fatalf("cancelled wait: err=%v callback_called=%v", err, called)
 	}
 }
+
+
+func TestPolicyWaitChargesAdditionalRedirectRequest(t *testing.T) {
+	digest := "test-policy-redirect-token"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 2, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if err := PolicyWait(context.Background(), digest, limits); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed < 450*time.Millisecond {
+		t.Fatalf("redirect did not consume a second program token: waited %s", elapsed)
+	}
+}
+
+func TestPolicyWaitHonorsCancellation(t *testing.T) {
+	digest := "test-policy-redirect-cancel"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 1, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if err := PolicyWait(ctx, digest, limits); err == nil {
+		t.Fatal("PolicyWait succeeded after its context was cancelled")
+	}
+}
+
+func TestPolicyGovernorRejectsChangedLimitsForSameRevision(t *testing.T) {
+	digest := "test-policy-limits-immutable"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 2, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	changed := limits
+	changed.RequestsPerSecond = 3
+	if err := PolicyWait(context.Background(), digest, changed); err == nil {
+		t.Fatal("same policy revision accepted different request limits")
+	}
+}
