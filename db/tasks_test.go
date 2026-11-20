@@ -718,7 +718,6 @@ func TestListTasksOrderByIDDesc(t *testing.T) {
 	}
 }
 
-
 func TestTaskProgramPolicyJSONRoundTrip(t *testing.T) {
 	d, err := Open(testDSN(t))
 	if err != nil {
