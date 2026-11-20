@@ -179,6 +179,15 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 		return c.block(TargetGateUnavailable, "gate_unavailable", first, "the exemption list could not be read: "+err.Error())
 	}
 
+	if c.scope.ProgramPolicyRequired {
+		for _, target := range targets {
+			if ex.derived[db.TargetKey(target.Host, target.Port)] {
+				ct := &checkedTarget{Target: target}
+				return c.block(policy.CodeProxyUnsupported, "policy_proxy_unsupported", ct,
+					"this target resolves to a platform-derived service/proxy exemption; its ultimate egress destination is not controlled by ProgramPolicy")
+			}
+		}
+	}
 	// Block rules come first, and an exempt or pinned host that matches one is
 	// blocked. They are matched on what the call declares before anything is
 	// resolved: a hit there costs no lookup, for any target of the call.
