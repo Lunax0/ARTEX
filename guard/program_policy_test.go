@@ -2,6 +2,7 @@ package guard
 
 import (
 	"context"
+	"errors"
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
@@ -134,6 +135,23 @@ func TestProgramPolicyRequiresExactlyOneValidWebFetchTarget(t *testing.T) {
 		if block, msg := callPolicyGuard(g, ctx, "WebFetch", input); !block ||
 			!strings.Contains(msg, policy.CodeInvalidTarget) {
 			t.Errorf("input %s: block=%v msg=%q", input, block, msg)
+		}
+	}
+}
+
+func TestProgramPolicyRevocationBlocksTargetAndInternalTools(t *testing.T) {
+	compiled := compiledGuardPolicy(t)
+	g := NewTargetOnly(nil)
+	g.SetProgramPolicy(compiled, true, "")
+	scope, _ := intercept.TargetScopeFromContext(policyGuardContext(compiled, nil))
+	scope.ProgramPolicyCheck = func(context.Context) error {
+		return errors.New("approved policy source has been revoked")
+	}
+	ctx := intercept.WithTargetScope(context.Background(), scope)
+	for _, tool := range []string{"WebFetch", "list_assets"} {
+		if block, msg := callPolicyGuard(g, ctx, tool, `{"url":"https://api.example.net/"}`); !block ||
+			!strings.Contains(msg, policy.CodeUnavailable) {
+			t.Errorf("%s: revoked policy block=%v msg=%q", tool, block, msg)
 		}
 	}
 }
