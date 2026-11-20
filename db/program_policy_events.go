@@ -57,11 +57,12 @@ func (d *DB) CreateProgramPolicyEvent(e ProgramPolicyEvent) (int64, error) {
 	if len(e.ResolvedIPs) > 32 {
 		return 0, errors.New("ProgramPolicy event contains too many resolved IP addresses")
 	}
-	for _, rawIP := range e.ResolvedIPs {
+	for n, rawIP := range e.ResolvedIPs {
 		ip := net.ParseIP(strings.TrimSpace(rawIP))
 		if ip == nil {
 			return 0, errors.New("ProgramPolicy event resolved IP must be an IP literal")
 		}
+		e.ResolvedIPs[n] = ip.String()
 	}
 	if e.ExecutionStatus != "unknown" && e.ExecutionStatus != "not_executed" {
 		return 0, fmt.Errorf("invalid ProgramPolicy execution status %q", e.ExecutionStatus)
