@@ -26,6 +26,7 @@ import (
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/egress"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/artex/llmpool"
 	"github.com/Autumn-27/artex/llmrec"
 	"github.com/Autumn-27/artex/report"
@@ -1694,6 +1695,7 @@ type createTaskReq struct {
 	PlanHeartbeatSeconds int      `json:"plan_heartbeat_seconds"`      // planner heartbeat interval (seconds); 0/omitted = default 600 (10min); floor = default = 600, lower values are raised to 600
 	PlanQuietMode        *bool    `json:"plan_quiet_mode,omitempty"`   // planner quiet-mode switch (#86); omitted = default on; false = edge rounds always plan
 	TargetGate           *bool    `json:"target_gate,omitempty"`       // approval gate for asset targets, opt-in; omitted/null = off
+	ProgramPolicy        *policy.ProgramPolicy `json:"program_policy,omitempty"` // reviewed Bug Bounty scope; server stamps approver/timestamps
 	SeedFirstIntent      *bool    `json:"seed_first_intent,omitempty"` // issue one seed intent at creation (content = description + goal) so a worker can start right away without waiting for the first planner round; omitted/null = default off, the standard plan-then-execute flow. Pass true explicitly to enable (for CTF tasks often solved in one work, this skips the pre-start planner round).
 	CoverageEnabled      *bool    `json:"coverage_enabled,omitempty"`  // asset coverage feature; omitted/null = default on (true). false = disables coverage calculation/display/auto-accumulated scope + hides add_task_scope/list_untested_assets. company links are unaffected.
 	// InterceptRules: task-level asset interception/allow rules (entered at creation, stored in task_intercept_rules, never the global table).
@@ -1763,6 +1765,31 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "invalid task-level intercept rules: "+err.Error())
 		return
 	}
+	var programPolicyJSON []byte
+	if req.ProgramPolicy != nil {
+		approver := s.approver(r)
+		if approver == "" {
+			writeErr(w, 401, "a valid authenticated operator identity is required to approve a program policy")
+			return
+		}
+		snapshot := *req.ProgramPolicy
+		now := time.Now().UTC()
+		// Approval metadata is server-owned. Client-supplied approver/timestamps
+		// are ignored; the authenticated JWT subject is the operator attestation.
+		snapshot.RetrievedAt = now
+		snapshot.ApprovedAt = now
+		snapshot.ApprovedBy = approver
+		compiled, err := policy.CompileAt(snapshot, now)
+		if err != nil {
+			writeErr(w, 400, "invalid Bug Bounty program policy: "+err.Error())
+			return
+		}
+		programPolicyJSON, err = json.Marshal(compiled.Snapshot())
+		if err != nil {
+			writeErr(w, 500, "could not serialize the approved program policy")
+			return
+		}
+	}
 	t, err := s.m.CreateTaskWithOptions(req.Description, req.Goal, db.TaskCreateOptions{
 		Name: strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
 		SourceTaskIDs: sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
@@ -1771,6 +1798,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		InterceptRules:  interceptRules,
 		LLMRotate:       req.LLMRotate,
 		TargetGate:      req.TargetGate,
+		ProgramPolicyJSON: programPolicyJSON,
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrTaskCategoryInvalid) || errors.Is(err, db.ErrTaskCategoryNotFound) {
