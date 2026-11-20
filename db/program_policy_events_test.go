@@ -73,8 +73,20 @@ func TestProgramPolicyEventRoundTrip(t *testing.T) {
 		len(dialEvent.ResolvedIPs) != 1 || dialEvent.ResolvedIPs[0] != "203.0.113.8" {
 		t.Fatalf("dial event round trip: %+v err=%v", dialEvent, err)
 	}
-	rows, err := d.ListTaskProgramPolicyEvents(taskID, 2)
-	if err != nil || len(rows) != 2 {
+	retryID, err := d.CreateProgramPolicyEvent(ProgramPolicyEvent{
+		TaskID: taskID, ToolName: "WebFetch.Retry", DecisionCode: "POLICY_ALLOWED",
+		Action: "allow", EventPhase: "retry", TargetAuthority: "api.example.test:443",
+		PolicyDigest: digest, ExecutionStatus: "unknown", Reason: "bounded retry after HTTP 503",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	retryEvent, err := d.GetProgramPolicyEvent(retryID)
+	if err != nil || retryEvent == nil || retryEvent.EventPhase != "retry" {
+		t.Fatalf("retry event round trip: %+v err=%v", retryEvent, err)
+	}
+	rows, err := d.ListTaskProgramPolicyEvents(taskID, 3)
+	if err != nil || len(rows) != 3 {
 		t.Fatalf("list events: %+v err=%v", rows, err)
 	}
 	if _, err := d.ListTaskProgramPolicyEvents(" ", 10); err == nil {
