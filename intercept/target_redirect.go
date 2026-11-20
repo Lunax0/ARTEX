@@ -45,19 +45,22 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 		if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
 			from = via[len(via)-1].URL.String()
 		}
-		if scoped && scope.ProgramPolicyRequired {
-			logRedirect := func(action, code, reason string) error {
-				if scope.ProgramPolicyAudit == nil {
-					return errors.New("the ProgramPolicy redirect audit writer is unavailable")
-				}
-				authority := ""
-				if target, err := urlTarget(req.URL.String()); err == nil {
-					authority = net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
-				}
-				return scope.ProgramPolicyAudit(
-					ctx, "redirect", toolName+".Redirect", authority, action, code, reason, nil,
-				)
+		logRedirect := func(action, code, reason string) error {
+			if !scoped || !scope.ProgramPolicyRequired {
+				return nil
 			}
+			if scope.ProgramPolicyAudit == nil {
+				return errors.New("the ProgramPolicy redirect audit writer is unavailable")
+			}
+			authority := ""
+			if target, err := urlTarget(req.URL.String()); err == nil {
+				authority = net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
+			}
+			return scope.ProgramPolicyAudit(
+				ctx, "redirect", toolName+".Redirect", authority, action, code, reason, nil,
+			)
+		}
+		if scoped && scope.ProgramPolicyRequired {
 			if scope.ProgramPolicyCheck == nil {
 				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the ProgramPolicy revocation check is unavailable"}
 				_ = logRedirect("deny", res.Code, res.Reason)
