@@ -27,10 +27,10 @@ func TestBugBountyHuntingSkillIsDiscoverableAndPolicyBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := string(raw)
-	flat := strings.Join(strings.Fields(body), " ")
+	flat := strings.ToLower(strings.Join(strings.Fields(body), " "))
 	for _, marker := range []string{
 		"ProgramPolicy snapshot",
-		"Do not perform live target requests",
+		"do not perform live target requests",
 		"researcher-controlled accounts",
 		"non-owned personal information",
 		"read-only",
