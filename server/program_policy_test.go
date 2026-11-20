@@ -21,7 +21,7 @@ func TestCreateTaskApprovesAndPersistsProgramPolicy(t *testing.T) {
 	expires := now.Add(24 * time.Hour)
 	request := map[string]any{
 		"description": "Program policy persistence test",
-		"goal":        "Review the authorized web application for reproducible security issues without accessing other users' data.",
+		"goal":        "Review https://app.example.com/ for reproducible security issues using only owned test accounts and without accessing other users' data.",
 		"program_policy": map[string]any{
 			"schema_version": 1,
 			"program_id":     "policy-persistence-test",
@@ -104,7 +104,7 @@ func TestCreateTaskRejectsInvalidProgramPolicy(t *testing.T) {
 	g := newGateServer(t)
 	request := map[string]any{
 		"description": "Invalid policy test",
-		"goal":        "Review the authorized web application for reproducible security issues without accessing other users' data.",
+		"goal":        "Review https://app.example.com/ for reproducible security issues using only owned test accounts and without accessing other users' data.",
 		"program_policy": map[string]any{
 			"schema_version": 1,
 			"program_id":     "invalid-policy-test",
