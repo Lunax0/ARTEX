@@ -17,6 +17,8 @@ func TestCreateProgramPolicyEventValidatesBeforeDatabase(t *testing.T) {
 		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", PolicyDigest: "not-a-digest"},
 		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", TargetAuthority: "https://example.test/path"},
 		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", TargetAuthority: "example.test:99999"},
+		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", EventPhase: "other"},
+		{TaskID: "task", ToolName: "WebFetch", DecisionCode: "POLICY_ALLOWED", Action: "allow", ExecutionStatus: "unknown", ResolvedIPs: []string{"not-an-ip"}},
 	}
 	for n, event := range cases {
 		if _, err := d.CreateProgramPolicyEvent(event); err == nil {
@@ -49,8 +51,8 @@ func TestProgramPolicyEventRoundTrip(t *testing.T) {
 		t.Fatalf("get event: %+v err=%v", got, err)
 	}
 	if got.TaskID != taskID || got.ToolName != input.ToolName ||
-		got.DecisionCode != input.DecisionCode || got.Action != "allow" ||
-		got.TargetAuthority != input.TargetAuthority || got.PolicyDigest != digest ||
+		got.DecisionCode != input.DecisionCode || got.Action != "allow" || got.EventPhase != "decision" ||
+		got.TargetAuthority != input.TargetAuthority || got.PolicyDigest != digest || len(got.ResolvedIPs) != 0 ||
 		got.ExecutionStatus != "unknown" || got.Actor != "system" {
 		t.Fatalf("event round trip mismatch: %+v", got)
 	}
