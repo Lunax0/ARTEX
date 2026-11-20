@@ -1,6 +1,6 @@
 # ARTEX Test Plan
 
-Status: test suites authored for M1.2; **none of the new tests have been executed yet**. No passing build/test result is claimed.  
+Status: M1 CI validation completed on 2026-11-20. PR #1 workflow run 44707635509 passed all five jobs: Go build/vet/unit+integration/race, Go stable serial tests, Web TypeScript/tests/static build, ShellCheck/shell tests, and Python posture tests. Local reproduction, fuzz/security review, migration rollback testing and benchmark reproduction remain outstanding.
 Baseline: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
 
 ## 1. Baseline reproduction
@@ -31,14 +31,14 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 - `db/tasks_test.go`: JSONB policy round-trip, legacy NULL behavior and invalid JSON rejection.
 - `db/migrate_test.go`: migration sequence includes `0008_task_program_policy.sql`.
 - `server/program_policy_test.go`: server-stamped approver/timestamps, task persistence, runtime compilation and invalid policy rejection.
-- These tests are authored but not executed. Run `go test ./policy ./db ./server` in the pinned Go toolchain with a disposable PostgreSQL database.
+- These tests passed in PR #1 workflow run 44707635509. Reproduce locally with `go test ./policy ./db ./server` in the pinned Go toolchain and a disposable PostgreSQL database before release.
 
 
 ### ProgramPolicy audit tests
 
 - `db/intercept_decided_by_test.go`: verify ProgramPolicy decisions persist with `decision_source=program_policy`, `decided_by=system`, sanitized target-only input, policy digest metadata, history detail retrieval and combined filters.
 - Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate.
-- These tests are authored but have **not yet been executed** in the pinned Go toolchain/CI.
+- These tests passed in PR #1 workflow run 44707635509. Local reproduction and independent review of audit failure behavior remain outstanding.
 
 ### Policy compilation and task binding
 - Reject malformed policy URL/domain/CIDR, wildcard overreach, invalid rate/concurrency, empty scope, malformed source digest and unknown policy versions.
