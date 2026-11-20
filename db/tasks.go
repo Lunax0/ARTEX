@@ -265,8 +265,8 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 		SourceTaskIDs:  append([]int64(nil), opts.SourceTaskIDs...),
 		CompanyIDs:     append([]int64(nil), opts.CompanyIDs...),
 		TimeoutSeconds: opts.TimeoutSeconds, PlanHeartbeatSeconds: opts.PlanHeartbeatSeconds,
-		PlanQuietMode:   quietMode,
-		CoverageEnabled: coverageEnabled,
+		PlanQuietMode:     quietMode,
+		CoverageEnabled:   coverageEnabled,
 		ProgramPolicyJSON: append([]byte(nil), opts.ProgramPolicyJSON...),
 	}
 	rotate := false
