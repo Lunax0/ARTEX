@@ -323,6 +323,40 @@ func (s *Server) interceptListTaskItems(w http.ResponseWriter, r *http.Request) 
 }
 
 // programPolicyTaskEvents returns the sanitized, append-only ProgramPolicy decision ledger for one task.
+// programPolicyStatus reports whether a task's exact approved policy source
+// is active, expired or revoked. It never exposes raw policy input.
+func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
+	if s.pg(w) == nil {
+		return
+	}
+	taskID := strings.TrimSpace(r.PathValue("taskID"))
+	task, ok := s.m.Task(taskID)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "task not found")
+		return
+	}
+	if !task.ProgramPolicyBound || task.ProgramPolicy == nil || task.ProgramPolicyError != "" {
+		writeErr(w, http.StatusConflict, "task has no valid approved ProgramPolicy snapshot")
+		return
+	}
+	snapshot := task.ProgramPolicy.Snapshot()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	revocation, err := s.m.PG().GetProgramPolicyRevocation(ctx, snapshot.ProgramID, snapshot.SourceSHA256)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not verify ProgramPolicy status")
+		return
+	}
+	expired := !snapshot.ExpiresAt.After(time.Now().UTC())
+	revoked := revocation != nil
+	writeJSON(w, http.StatusOK, map[string]any{
+		"program_id": snapshot.ProgramID, "source_sha256": snapshot.SourceSHA256,
+		"expires_at": snapshot.ExpiresAt, "expired": expired,
+		"revoked": revoked, "active": !expired && !revoked,
+		"revocation": revocation,
+	})
+}
+
 type programPolicyRevokeRequest struct {
 	Reason string `json:"reason"`
 }
