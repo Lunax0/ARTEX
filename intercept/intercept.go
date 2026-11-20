@@ -851,6 +851,11 @@ func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec De
 	}
 	taskID, agentName := taskInfoFromCtx(ctx)
 	if taskID == "" {
+		if scope, ok := TargetScopeFromContext(ctx); ok {
+			taskID = scope.TaskID
+		}
+	}
+	if taskID == "" {
 		return
 	}
 	executionStatus := "not_executed"
