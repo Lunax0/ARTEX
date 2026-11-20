@@ -100,6 +100,22 @@ func (i *Interceptor) AcquireProgramPolicyBudget(ctx context.Context, key string
 	return i.db.AcquireProgramPolicyBudget(ctx, key, limits)
 }
 
+// CheckProgramPolicyRevocation verifies that the exact approved policy source
+// has not been revoked. Database errors are returned so callers can fail closed.
+func (i *Interceptor) CheckProgramPolicyRevocation(ctx context.Context, programID, sourceSHA256 string) error {
+	if i == nil || i.db == nil {
+		return errors.New("ProgramPolicy revocation database is unavailable")
+	}
+	revoked, err := i.db.IsProgramPolicyRevoked(ctx, programID, sourceSHA256)
+	if err != nil {
+		return fmt.Errorf("ProgramPolicy revocation check failed: %w", err)
+	}
+	if revoked {
+		return errors.New("the approved ProgramPolicy source has been revoked; create and approve a refreshed policy snapshot")
+	}
+	return nil
+}
+
 // ConsumeProgramPolicyRequest charges one redirect hop against the shared
 // PostgreSQL-backed token bucket.
 func (i *Interceptor) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits policy.Limits) error {
@@ -124,6 +140,7 @@ type TargetScope struct {
 	ProgramPolicyError    string
 	ProgramPolicyAcquire  func(context.Context, string, policy.Limits) (func(), error)
 	ProgramPolicyWait     func(context.Context, string, policy.Limits) error
+	ProgramPolicyCheck    func(context.Context) error
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the
