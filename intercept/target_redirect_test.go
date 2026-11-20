@@ -229,7 +229,6 @@ func atoiPort(t *testing.T, s string) int {
 	return p
 }
 
-
 func TestProgramPolicyRedirectCheckIsIndependentOfTargetGate(t *testing.T) {
 	compiled := compiledDialPolicy(t)
 	scope := TargetScope{
@@ -278,7 +277,6 @@ func TestProgramPolicyRedirectFailsClosedWhenSnapshotMissing(t *testing.T) {
 		t.Fatalf("missing policy snapshot was not blocked: %v", err)
 	}
 }
-
 
 func TestProgramPolicyRedirectFailsClosedWithoutBudgetCallback(t *testing.T) {
 	ctx := WithTargetScope(context.Background(), TargetScope{
