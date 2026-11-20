@@ -20,33 +20,33 @@ func TestCreateTaskApprovesAndPersistsProgramPolicy(t *testing.T) {
 	source := sha256.Sum256([]byte("captured bug bounty policy"))
 	expires := now.Add(24 * time.Hour)
 	request := map[string]any{
-		"description": "Program policy persistence test",
-		"goal": "Review the authorized web application for reproducible security issues without accessing other users' data.",
+		"description":    "Program policy persistence test",
+		"goal":           "Review the authorized web application for reproducible security issues without accessing other users' data.",
 		"program_policy": map[string]any{
 			"schema_version": 1,
-			"program_id": "policy-persistence-test",
-			"policy_url": "https://bugcrowd.com/engagements/policy-persistence-test",
-			"source_sha256": hex.EncodeToString(source[:]),
-			"retrieved_at": now.Add(-365 * 24 * time.Hour).Format(time.RFC3339Nano),
-			"approved_at": now.Add(-365 * 24 * time.Hour).Format(time.RFC3339Nano),
-			"approved_by": "spoofed-client",
-			"expires_at": expires.Format(time.RFC3339Nano),
-			"in_scope": []any{
+			"program_id":     "policy-persistence-test",
+			"policy_url":     "https://bugcrowd.com/engagements/policy-persistence-test",
+			"source_sha256":  hex.EncodeToString(source[:]),
+			"retrieved_at":   now.Add(-365 * 24 * time.Hour).Format(time.RFC3339Nano),
+			"approved_at":    now.Add(-365 * 24 * time.Hour).Format(time.RFC3339Nano),
+			"approved_by":    "spoofed-client",
+			"expires_at":     expires.Format(time.RFC3339Nano),
+			"in_scope":       []any{
 				map[string]any{"pattern": "app.example.com"},
 				map[string]any{"pattern": "*.api.example.net"},
 			},
-			"out_of_scope": []any{
+			"out_of_scope":   []any{
 				map[string]any{"pattern": "admin.app.example.com"},
 			},
-			"limits": map[string]any{
-				"requests_per_second": 1,
-				"burst": 1,
-				"max_concurrency": 1,
-				"request_timeout_seconds": 30,
-				"max_retries": 0,
+			"limits":         map[string]any{
+				"requests_per_second":      1,
+				"burst":                    1,
+				"max_concurrency":          1,
+				"request_timeout_seconds":  30,
+				"max_retries":              0,
 			},
-			"permissions": map[string]any{
-				"allow_passive_recon": true,
+			"permissions":    map[string]any{
+				"allow_passive_recon":      true,
 				"allow_authenticated_read": true,
 			},
 		},
@@ -103,21 +103,21 @@ func TestCreateTaskApprovesAndPersistsProgramPolicy(t *testing.T) {
 func TestCreateTaskRejectsInvalidProgramPolicy(t *testing.T) {
 	g := newGateServer(t)
 	request := map[string]any{
-		"description": "Invalid policy test",
-		"goal": "Review the authorized web application for reproducible security issues without accessing other users' data.",
+		"description":    "Invalid policy test",
+		"goal":           "Review the authorized web application for reproducible security issues without accessing other users' data.",
 		"program_policy": map[string]any{
 			"schema_version": 1,
-			"program_id": "invalid-policy-test",
-			"policy_url": "https://bugcrowd.com/engagements/invalid-policy-test",
-			"source_sha256": "not-a-sha256",
-			"expires_at": time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
-			"in_scope": []any{map[string]any{"pattern": "*.com"}},
-			"limits": map[string]any{
-				"requests_per_second": 1,
-				"burst": 1,
-				"max_concurrency": 1,
-				"request_timeout_seconds": 30,
-				"max_retries": 0,
+			"program_id":     "invalid-policy-test",
+			"policy_url":     "https://bugcrowd.com/engagements/invalid-policy-test",
+			"source_sha256":  "not-a-sha256",
+			"expires_at":     time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+			"in_scope":       []any{map[string]any{"pattern": "*.com"}},
+			"limits":         map[string]any{
+				"requests_per_second":      1,
+				"burst":                    1,
+				"max_concurrency":          1,
+				"request_timeout_seconds":  30,
+				"max_retries":              0,
 			},
 		},
 	}
