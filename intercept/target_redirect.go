@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/Autumn-27/artex/policy"
 )
@@ -44,16 +46,31 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 			from = via[len(via)-1].URL.String()
 		}
 		if scoped && scope.ProgramPolicyRequired {
+			logRedirect := func(action, code, reason string) error {
+				if scope.Interceptor == nil {
+					return errors.New("the ProgramPolicy redirect audit interceptor is unavailable")
+				}
+				authority := ""
+				if target, err := urlTarget(req.URL.String()); err == nil {
+					authority = net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
+				}
+				return scope.Interceptor.LogProgramPolicyNetworkEvent(
+					ctx, "redirect", toolName+".Redirect", authority, action, code, reason, nil,
+				)
+			}
 			if scope.ProgramPolicyCheck == nil {
 				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the ProgramPolicy revocation check is unavailable"}
+				_ = logRedirect("deny", res.Code, res.Reason)
 				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
 			}
 			if err := scope.ProgramPolicyCheck(ctx); err != nil {
 				res := TargetResult{Code: policy.CodeUnavailable, Reason: err.Error()}
+				_ = logRedirect("deny", res.Code, res.Reason)
 				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
 			}
 			decision := checkProgramPolicyURL(scope, req.URL.String())
 			if decision.Code != "" {
+				_ = logRedirect("deny", decision.Code, decision.Reason)
 				return &redirectError{res: decision, from: from, hop: req.URL.String(), scope: scope.scopeName()}
 			}
 		}
@@ -75,10 +92,16 @@ func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request)
 			budget, ok := RequestBudgetFromContext(ctx)
 			if !ok {
 				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the mandatory per-program request budget is unavailable"}
+				_ = logRedirect("deny", res.Code, res.Reason)
 				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
 			}
 			if err := budget(ctx, req.URL.String()); err != nil {
 				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the per-program request budget could not be acquired: " + err.Error()}
+				_ = logRedirect("deny", res.Code, res.Reason)
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			if err := logRedirect("allow", policy.CodeAllowed, "redirect hop passed policy and request-budget checks"); err != nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the redirect audit event could not be persisted: " + err.Error()}
 				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
 			}
 		}
