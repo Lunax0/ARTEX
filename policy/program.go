@@ -33,6 +33,7 @@ const (
 	CodeExpired          = "POLICY_EXPIRED"
 	CodeOperationDenied  = "POLICY_OPERATION_DENIED"
 	CodeNonPublicAddress = "POLICY_NON_PUBLIC_ADDRESS"
+	CodeProxyUnsupported = "POLICY_PROXY_UNSUPPORTED"
 )
 
 type Operation string
