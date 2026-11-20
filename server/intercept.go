@@ -17,6 +17,7 @@ import (
 	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/artex/llmrec"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/norma/llm"
 )
 
@@ -349,12 +350,15 @@ func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "task has no readable ProgramPolicy snapshot")
 		return
 	}
-	var snapshot struct {
-		ProgramID    string    `json:"program_id"`
-		SourceSHA256 string    `json:"source_sha256"`
-		ExpiresAt    time.Time `json:"expires_at"`
+	var snapshot policy.ProgramPolicy
+	if err := json.Unmarshal(stored.ProgramPolicyJSON, &snapshot); err != nil || snapshot.ExpiresAt.IsZero() {
+		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
+		return
 	}
-	if err := json.Unmarshal(stored.ProgramPolicyJSON, &snapshot); err != nil || snapshot.ProgramID == "" || snapshot.SourceSHA256 == "" || snapshot.ExpiresAt.IsZero() {
+	// Validate the snapshot at the instant immediately before its own expiry.
+	// This distinguishes a structurally invalid policy from a valid policy that
+	// has simply expired since the task was created.
+	if _, err := policy.CompileAt(snapshot, snapshot.ExpiresAt.Add(-time.Nanosecond)); err != nil {
 		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
 		return
 	}
