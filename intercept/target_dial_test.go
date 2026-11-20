@@ -540,10 +540,14 @@ func TestPinUsedRecordsEffectiveNameOnly(t *testing.T) {
 }
 
 
-func compiledDialPolicy(t *testing.T) *policy.CompiledPolicy {
+func compiledDialPolicy(t *testing.T, allowedPorts ...uint16) *policy.CompiledPolicy {
 	t.Helper()
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
 		t.Setenv(key, "")
+	}
+	ports := allowedPorts
+	if len(ports) == 0 {
+		ports = []uint16{80, 443}
 	}
 	now := time.Now().UTC()
 	sum := sha256.Sum256([]byte("dial policy source"))
@@ -557,8 +561,8 @@ func compiledDialPolicy(t *testing.T) *policy.CompiledPolicy {
 		ApprovedBy: "operator",
 		ExpiresAt: now.Add(time.Hour),
 		InScope: []policy.AssetRule{
-			{Pattern: "app.example.com"},
-			{Pattern: "203.0.113.0/24"},
+			{Pattern: "app.example.com", Ports: ports},
+			{Pattern: "203.0.113.0/24", Ports: ports},
 		},
 		Limits: policy.Limits{RequestsPerSecond: 1, Burst: 1, MaxConcurrency: 1, RequestTimeoutSecond: 30},
 	}, now)
@@ -578,7 +582,7 @@ func TestProgramPolicyDialEnforcedWithTargetGateOff(t *testing.T) {
 	scope := g.scope
 	scope.Enabled = func() bool { return false }
 	scope.ProgramPolicyRequired = true
-	scope.ProgramPolicy = compiledDialPolicy(t)
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
 	ctx := WithTargetScope(context.Background(), scope)
 
 	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "policy-allowed" {
@@ -629,7 +633,7 @@ func TestProgramPolicyDialAlsoAppliesWhenTargetGateIsOn(t *testing.T) {
 	g.pin("app.example.com", atoiPort(t, port), "203.0.113.7")
 	scope := g.scope
 	scope.ProgramPolicyRequired = true
-	scope.ProgramPolicy = compiledDialPolicy(t)
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
 	ctx := WithTargetScope(context.Background(), scope)
 
 	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "policy-and-pin" {
