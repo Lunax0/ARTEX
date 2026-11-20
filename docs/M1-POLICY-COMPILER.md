@@ -31,7 +31,7 @@ The source digest is an operator attestation supplied by the caller; schema v1 d
 - The normalized snapshot is stored in `tasks.program_policy` (JSONB) in migration `0008_task_program_policy.sql`.
 - Legacy tasks with a NULL policy column preserve existing behavior.
 - When a task is loaded or restored, the server recompiles the stored snapshot. Invalid, unsupported or expired snapshots remain policy-bound but fail closed.
-- The snapshot is immutable for the lifetime of the task. There is no in-place refresh/revocation endpoint yet; expiration stops policy-authorized target requests. Use a new task for a changed policy until an audited reapproval workflow exists.
+- The snapshot is immutable for the lifetime of the task. Exact-source revocation is available through the authenticated `POST /api/program-policy/task/{taskID}/revoke` endpoint; it disables every task sharing that program ID and source digest. Revocation is irreversible. There is no in-place refresh endpoint; expiration stops policy-authorized target requests. A changed policy requires a new task and fresh operator approval.
 
 A bounty task must be created with an explicit `program_policy`. The field is optional for ARTEX's non-bounty/legacy task workflows; omission does not create a policy boundary.
 
@@ -86,13 +86,13 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 ## Remaining blockers before live bounty use
 
 - PostgreSQL-backed per-program token buckets and concurrency leases enforce the initial WebFetch request and each followed redirect hop across ARTEX instances sharing the same database. Other network execution paths remain blocked. Automatic 429/503 retries are not implemented.
-- Sanitized policy decision events are persisted in a dedicated table. Ordinary UPDATE/DELETE/TRUNCATE statements are rejected by database triggers. An allowed initial WebFetch request fails closed if its event cannot be persisted. Resolved-IP/per-hop usage and request-completion correlation are not yet recorded.
-- There is no in-place policy review, refresh, revocation or expiry-notification workflow. Expired snapshots fail closed; a changed scope requires a newly reviewed task snapshot.
+- Sanitized policy decision events are persisted in a dedicated table. The application exposes insert/list/get only; it does not provide update/delete APIs. This is not database-enforced append-only protection or cryptographic tamper evidence. An allowed initial WebFetch request fails closed if its event cannot be persisted. Resolved-IP/per-hop usage and request-completion correlation are not yet recorded.
+- Exact-source revocation is implemented and checked at Guard, shared-budget acquisition, redirect and final dial boundaries. There is still no in-place policy review/refresh or expiry-notification UI. Expired snapshots fail closed; changed scope requires a newly reviewed task snapshot.
 - There is no policy-aware custom HTTP, browser, MCP or subprocess sandbox. These tools are blocked, not policy-enabled.
 - Schema v1 has no path/method/account/data-class permissions.
-- Latest CI run #59 has Go stable, Web, Shell and Python jobs passed; Go race tests are still running. Local reproduction, independent adversarial review, migration rollback testing and benchmark reproduction remain outstanding.
+- CI must be checked against the latest branch head before release. Local reproduction, independent adversarial review, migration rollback testing and benchmark reproduction remain outstanding.
 
-Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy lifecycle, complete per-hop/resolved-IP audit, 429/503 retries and OS/container egress isolation remain incomplete.
+Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy refresh UI, complete per-hop/resolved-IP audit, 429/503 retries and OS/container egress isolation remain incomplete.
 
 
 ## M1.4 request-budget integration
