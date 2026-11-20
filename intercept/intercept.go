@@ -117,6 +117,26 @@ func TargetScopeFromContext(ctx context.Context) (s TargetScope, ok bool) {
 	return s, ok
 }
 
+ 
+// RequestBudgetFunc charges one additional HTTP request made inside a
+// platform-owned client (for example, a followed redirect). The URL is passed
+// for diagnostics; the policy budget itself is shared across all hosts.
+type RequestBudgetFunc func(context.Context, string) error
+
+type requestBudgetCtxKey struct{}
+
+// WithRequestBudget attaches the mandatory per-program request-budget callback
+// to a request context. Child requests created by net/http retain this value.
+func WithRequestBudget(ctx context.Context, budget RequestBudgetFunc) context.Context {
+	return context.WithValue(ctx, requestBudgetCtxKey{}, budget)
+}
+
+// RequestBudgetFromContext returns the request-budget callback attached to ctx.
+func RequestBudgetFromContext(ctx context.Context) (RequestBudgetFunc, bool) {
+	budget, ok := ctx.Value(requestBudgetCtxKey{}).(RequestBudgetFunc)
+	return budget, ok && budget != nil
+}
+
 // compiledRule is an InterceptRule with the regex pre-compiled (nil for string rules)
 // and the argv tokens pre-parsed (nil for non-argv rules).
 type compiledRule struct {
