@@ -170,7 +170,7 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 		if action == "allow" {
 			status = "allowed"
 		}
-		g.interceptor.Log(ctx, intercept.ConvIDFromContext(ctx), intercept.Decision{
+		g.interceptor.LogProgramPolicy(ctx, intercept.ConvIDFromContext(ctx), intercept.Decision{
 			Action: action, Message: "ProgramPolicy " + code + ": " + reason,
 			ConfigDigest: digest,
 		}, ev.ToolName, safeInput, status)
