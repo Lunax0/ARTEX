@@ -86,7 +86,7 @@ func TestPolicyBoundWebFetchChargesRedirect(t *testing.T) {
 		ports = append(ports, uint16(port))
 	}
 	now := time.Now().UTC()
-	source := sha256.Sum256([]byte("policy-bound webfetch redirect budget test"))
+	source := sha256.Sum256([]byte("policy-bound webfetch redirect budget test " + now.Format(time.RFC3339Nano)))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
 		SchemaVersion: policy.SchemaVersion,
 		ProgramID: "webfetch-redirect-budget-test",
@@ -104,9 +104,6 @@ func TestPolicyBoundWebFetchChargesRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	digest := compiled.Snapshot().ProgramID + ":" + compiled.Snapshot().SourceSHA256
-	policyGovernor := egress.New(egress.Profile{Name: "test-reset"})
-	_ = policyGovernor
 	// A unique policy source keeps this test's process-wide budget isolated.
 	ctx := intercept.WithTargetScope(t.Context(), intercept.TargetScope{
 		TaskID: "webfetch-redirect-budget-test", ProgramPolicyRequired: true, ProgramPolicy: compiled,
@@ -120,7 +117,7 @@ func TestPolicyBoundWebFetchChargesRedirect(t *testing.T) {
 		t.Fatalf("policy-bound WebFetch: err=%v result=%q", err, result.Flatten())
 	}
 	if elapsed := time.Since(began); elapsed < 400*time.Millisecond {
-		t.Fatalf("redirect was followed without its additional budget wait: %s (policy key %s)", elapsed, digest)
+		t.Fatalf("redirect was followed without its additional budget wait: %s", elapsed)
 	}
 	if startHits.Load() != 1 || finalHits.Load() != 1 {
 		t.Fatalf("request hits: start=%d final=%d, want one each", startHits.Load(), finalHits.Load())
