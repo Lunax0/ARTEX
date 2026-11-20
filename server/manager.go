@@ -990,12 +990,25 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 // Gate state into planner, worker and main-agent tool contexts. The gate flag is
 // read on every call; ProgramPolicy itself cannot be widened mid-run.
 func (t *Task) targetScope(wait time.Duration) intercept.TargetScope {
-	return intercept.TargetScope{
+	scope := intercept.TargetScope{
 		TaskID: t.ID, Enabled: t.targetGate.Load, WaitBound: wait, Interceptor: t.interceptor,
 		ProgramPolicyRequired: t.ProgramPolicyBound, ProgramPolicy: t.ProgramPolicy, ProgramPolicyError: t.ProgramPolicyError,
 		ProgramPolicyAcquire: t.interceptor.AcquireProgramPolicyBudget,
 		ProgramPolicyWait:    t.interceptor.ConsumeProgramPolicyRequest,
 	}
+	if t.ProgramPolicyBound {
+		if t.ProgramPolicy == nil {
+			scope.ProgramPolicyCheck = func(context.Context) error {
+				return errors.New("required ProgramPolicy snapshot is unavailable")
+			}
+		} else {
+			snapshot := t.ProgramPolicy.Snapshot()
+			scope.ProgramPolicyCheck = func(ctx context.Context) error {
+				return t.interceptor.CheckProgramPolicyRevocation(ctx, snapshot.ProgramID, snapshot.SourceSHA256)
+			}
+		}
+	}
+	return scope
 }
 
 // searchBackendEndpoints are the endpoints of the search backends. The
