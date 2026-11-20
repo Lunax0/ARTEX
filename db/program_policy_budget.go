@@ -185,7 +185,7 @@ FROM program_policy_budget_state WHERE budget_key=$1 FOR UPDATE`, key).
 			}
 			return tx.Commit()
 		}
-		wait := time.Duration((1-tokens)/rps*float64(time.Second))
+		wait := time.Duration((1 - tokens) / rps * float64(time.Second))
 		_, err = tx.ExecContext(ctx, "UPDATE program_policy_budget_state SET tokens=$2, refilled_at=$3, updated_at=$3 WHERE budget_key=$1", key, tokens, now)
 		if err != nil {
 			_ = tx.Rollback()
