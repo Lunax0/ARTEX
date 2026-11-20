@@ -122,8 +122,8 @@ type TargetScope struct {
 	ProgramPolicyRequired bool
 	ProgramPolicy         *policy.CompiledPolicy
 	ProgramPolicyError    string
-	ProgramPolicyAcquire func(context.Context, string, policy.Limits) (func(), error)
-	ProgramPolicyWait    func(context.Context, string, policy.Limits) error
+	ProgramPolicyAcquire  func(context.Context, string, policy.Limits) (func(), error)
+	ProgramPolicyWait     func(context.Context, string, policy.Limits) error
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the
