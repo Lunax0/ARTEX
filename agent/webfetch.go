@@ -72,22 +72,39 @@ func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, inp
 	if err != nil {
 		return result, err
 	}
-	for attempt := 1; attempt <= limits.MaxRetries; attempt++ {
+	auditRetry := func(action, code, reason string) error {
+		if scope.ProgramPolicyAudit == nil {
+			return fmt.Errorf("retry audit writer is unavailable")
+		}
+		return scope.ProgramPolicyAudit(ctx, "retry", "WebFetch.Retry", policyAuditAuthority(targetURL), action, code, reason, nil)
+	}
+	denyRetry := func(reason string) (actool.Result, error) {
+		if scope.ProgramPolicyAudit != nil {
+			_ = auditRetry("deny", policy.CodeOperationDenied, reason)
+		}
+		return actool.Errorf("ARTEX policy control: " + reason), nil
+	}
+	for attempt := 1; ; attempt++ {
 		status, retry := retryablePolicyHTTPStatus(result)
 		if !retry {
-			break
+			return result, nil
+		}
+		if attempt > limits.MaxRetries {
+			reason := fmt.Sprintf("HTTP %d retry limit exhausted (max_retries=%d)", status, limits.MaxRetries)
+			_ = auditRetry("deny", policy.CodeOperationDenied, reason)
+			return result, nil
 		}
 		if scope.ProgramPolicyCheck == nil {
-			return actool.Errorf("ARTEX policy control: policy revocation check is unavailable; retry blocked"), nil
+			return denyRetry("policy revocation check is unavailable; retry blocked")
 		}
 		if err := scope.ProgramPolicyCheck(ctx); err != nil {
-			return actool.Errorf("ARTEX policy control: %v; retry blocked", err), nil
+			return denyRetry("policy revocation check failed; retry blocked")
 		}
 		if scope.ProgramPolicyWait == nil {
-			return actool.Errorf("ARTEX policy control: shared request budget is unavailable; retry blocked"), nil
+			return denyRetry("shared request budget is unavailable; retry blocked")
 		}
 		if err := scope.ProgramPolicyWait(ctx, budgetKey, limits); err != nil {
-			return actool.Errorf("ARTEX policy control: retry budget unavailable: " + err.Error()), nil
+			return denyRetry("retry request budget could not be acquired; retry blocked")
 		}
 		shift := min(attempt-1, 3)
 		delay := time.Duration(1<<shift) * 250 * time.Millisecond
@@ -95,17 +112,17 @@ func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, inp
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return actool.Errorf("ARTEX policy control: request cancelled during retry backoff"), nil
+			return denyRetry("request cancelled during retry backoff")
 		case <-timer.C:
 		}
 		if err := scope.ProgramPolicyCheck(ctx); err != nil {
-			return actool.Errorf("ARTEX policy control: %v; retry blocked", err), nil
+			return denyRetry("policy revocation check failed after retry backoff; retry blocked")
 		}
 		if scope.ProgramPolicyAudit == nil {
 			return actool.Errorf("ARTEX policy control: retry audit writer is unavailable; retry blocked"), nil
 		}
 		reason := fmt.Sprintf("retrying HTTP %d response after bounded backoff (attempt %d of %d)", status, attempt, limits.MaxRetries)
-		if err := scope.ProgramPolicyAudit(ctx, "retry", "WebFetch.Retry", policyAuditAuthority(targetURL), "allow", policy.CodeAllowed, reason, nil); err != nil {
+		if err := auditRetry("allow", policy.CodeAllowed, reason); err != nil {
 			return actool.Errorf("ARTEX policy control: retry audit could not be persisted; retry blocked"), nil
 		}
 		result, err = f.CoreTool.Call(budgetCtx, input, tc)
@@ -113,7 +130,6 @@ func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, inp
 			return result, err
 		}
 	}
-	return result, nil
 }
 
 // governedFetch runs each WebFetch call as one send under the egress governor
