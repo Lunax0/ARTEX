@@ -85,14 +85,14 @@ This deliberately means ReconFTW and other subprocess-based recon are not availa
 
 ## Remaining blockers before live bounty use
 
-- PostgreSQL-backed per-program token buckets and concurrency leases enforce the initial WebFetch request and each followed redirect hop across ARTEX instances sharing the same database. Other network execution paths remain blocked. Automatic 429/503 retries are not implemented.
+- PostgreSQL-backed per-program token buckets and concurrency leases enforce the initial WebFetch request, each followed redirect hop and each bounded HTTP 429/503 retry across ARTEX instances sharing the same database. Retries honor max_retries (0–5), recheck revocation, use bounded exponential backoff and write a sanitized retry event before repeating the request. Other network execution paths remain blocked.
 - Sanitized policy decision events are persisted in a dedicated table. The application exposes insert/list/get only; it does not provide update/delete APIs. This is not database-enforced append-only protection or cryptographic tamper evidence. Allowed initial WebFetch requests, redirects and dials fail closed if their required event cannot be persisted. Token-bucket usage and request-completion correlation are not yet recorded.
 - Exact-source revocation is implemented and checked at Guard, shared-budget acquisition, redirect and final dial boundaries. There is still no in-place policy review/refresh or expiry-notification UI. Expired snapshots fail closed; changed scope requires a newly reviewed task snapshot.
 - There is no policy-aware custom HTTP, browser, MCP or subprocess sandbox. These tools are blocked, not policy-enabled.
 - Schema v1 has no path/method/account/data-class permissions.
 - CI must be checked against the latest branch head before release. Local reproduction, independent adversarial review, migration rollback testing and benchmark reproduction remain outstanding.
 
-Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy refresh UI, token-bucket/request-completion audit, 429/503 retries and OS/container egress isolation remain incomplete.
+Do not use this milestone alone to authorize live bounty execution. The supported WebFetch enforcement path still requires independent security review; policy refresh UI, Retry-After support, token-bucket/request-completion audit and OS/container egress isolation remain incomplete.
 
 
 ## M1.4 request-budget integration
@@ -107,7 +107,7 @@ Policy-bound WebFetch calls use a mandatory egress governor keyed by `program_id
 - A redirect denied by scope, awaiting human approval, or missing its budget callback is not followed. It does not consume a request token.
 - Reusing one policy revision key with any different request limits (including timeout) fails closed rather than silently retaining stale limits.
 - The current implementation uses PostgreSQL-backed token buckets and concurrency leases keyed by `program_id + source_sha256`. Independent ARTEX instances sharing the same PostgreSQL database share the same budget. Lease expiry recovers slots after process crashes; a deployment using a different database or bypassing the callback would not share the budget.
-- `max_retries` is validated and stored in the governor profile, but WebFetch's wrapper does not expose response status to the governor; automatic 429/503 retries are not implemented.
+- WebFetch exposes its HTTP status in the result prefix. Policy-bound requests retry HTTP 429/503 up to `max_retries` (maximum 5), with bounded exponential backoff, a fresh revocation check, a shared PostgreSQL budget charge and a durable retry audit event before each retry. The current Norma WebFetch result does not expose the `Retry-After` header, so the wrapper cannot honor server-provided retry timing; it uses its own bounded backoff.
 
 The budget covers the initial request and each followed redirect hop for the supported WebFetch path across instances sharing the same PostgreSQL database. It is not a complete network sandbox: other network-capable tools remain blocked for policy-bound tasks and must not be enabled until they use the same authorization and budget contract.
 
