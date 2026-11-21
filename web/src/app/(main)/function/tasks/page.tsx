@@ -3546,7 +3546,7 @@ function CreateTaskSheet({
 }`}
                   />
                   <FieldDescription>
-                    {t("For Bug Bounty tasks, attach the reviewed policy snapshot. The server stamps your authenticated operator identity and approval time; it does not fetch or verify the policy page hash, so calculate source_sha256 from the exact saved policy text. In-scope rules default to ports 80/443; list any additional authorized ports explicitly. When attached, WebFetch is scope-checked and Bash/shell/MCP/custom/unknown tools are blocked until egress sandboxing is implemented. Leaving this blank preserves legacy task behavior and does not provide a Bug Bounty authorization boundary.")}
+                    {t("For Bug Bounty tasks, attach the reviewed policy snapshot. The server stamps your authenticated operator identity and approval time; it does not fetch or verify the policy page hash, so calculate source_sha256 from the exact saved policy text. In-scope rules default to ports 80/443; list any additional authorized ports explicitly. When attached, WebFetch is scope-checked; web_search requires allow_passive_recon=true; Bash/shell/MCP/custom/unknown tools are blocked until egress sandboxing is implemented. Leaving this blank preserves legacy task behavior and does not provide a Bug Bounty authorization boundary.")}
                   </FieldDescription>
                 </Field>
               </CollapsibleContent>
