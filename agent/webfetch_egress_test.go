@@ -181,10 +181,13 @@ func TestPolicyBoundWebFetchRetries429And503WithBudgetAndAudit(t *testing.T) {
 		ApprovedAt:    now,
 		ExpiresAt:     now.Add(time.Hour),
 		ApprovedBy:    "test",
-		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
+		InScope:       []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
 		Limits: policy.Limits{
-			RequestsPerSecond: 100, Burst: 3, MaxConcurrency: 1,
-			RequestTimeoutSecond: 10, MaxRetries: 2,
+			RequestsPerSecond:    100,
+			Burst:                3,
+			MaxConcurrency:       1,
+			RequestTimeoutSecond: 10,
+			MaxRetries:           2,
 		},
 	}, now)
 	if err != nil {
@@ -259,7 +262,7 @@ func TestPolicyBoundWebFetchRetryCapIsAudited(t *testing.T) {
 		ApprovedAt:    now,
 		ExpiresAt:     now.Add(time.Hour),
 		ApprovedBy:    "test",
-		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
+		InScope:       []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
 		Limits: policy.Limits{
 			RequestsPerSecond:    100,
 			Burst:                2,
@@ -337,7 +340,7 @@ func TestPolicyBoundWebFetchRechecksRevocationAfterRetryBackoff(t *testing.T) {
 		ApprovedAt:    now,
 		ExpiresAt:     now.Add(time.Hour),
 		ApprovedBy:    "test",
-		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
+		InScope:       []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
 		Limits: policy.Limits{
 			RequestsPerSecond:    100,
 			Burst:                2,
