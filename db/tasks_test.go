@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -714,5 +715,60 @@ func TestListTasksOrderByIDDesc(t *testing.T) {
 	// Newest (largest id) first.
 	if seen[0] != ids[2] || seen[1] != ids[1] || seen[2] != ids[0] {
 		t.Fatalf("order=%v, want descending %v", seen, []int64{ids[2], ids[1], ids[0]})
+	}
+}
+
+func TestTaskProgramPolicyJSONRoundTrip(t *testing.T) {
+	d, err := Open(testDSN(t))
+	if err != nil {
+		t.Skipf("postgres unavailable (%v) — skipping", err)
+	}
+	t.Cleanup(func() { d.Close() })
+
+	raw := []byte(`{"schema_version":1,"program_id":"round-trip","in_scope":[{"pattern":"*.example.com"}]}`)
+	task, err := d.CreateTaskWithOptions("policy round trip", "goal", TaskCreateOptions{
+		ProgramPolicyJSON: raw,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cleanupErr(t, "policy task", d.DeleteTask(task.ID)) })
+
+	got, err := d.GetTask(task.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetTask = %+v, %v", got, err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(got.ProgramPolicyJSON, &decoded); err != nil {
+		t.Fatalf("stored policy JSON is invalid: %v (%s)", err, got.ProgramPolicyJSON)
+	}
+	if decoded["program_id"] != "round-trip" {
+		t.Fatalf("stored policy = %v, want program_id round-trip", decoded)
+	}
+
+	legacy, err := d.CreateTask("legacy task", "goal", nil, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cleanupErr(t, "legacy task", d.DeleteTask(legacy.ID)) })
+	loaded, err := d.GetTask(legacy.ID)
+	if err != nil || loaded == nil {
+		t.Fatalf("legacy GetTask = %+v, %v", loaded, err)
+	}
+	if len(loaded.ProgramPolicyJSON) != 0 {
+		t.Fatalf("legacy task unexpectedly has a program policy: %s", loaded.ProgramPolicyJSON)
+	}
+}
+
+func TestCreateTaskRejectsInvalidProgramPolicyJSON(t *testing.T) {
+	d, err := Open(testDSN(t))
+	if err != nil {
+		t.Skipf("postgres unavailable (%v) — skipping", err)
+	}
+	t.Cleanup(func() { d.Close() })
+	if _, err := d.CreateTaskWithOptions("bad policy", "goal", TaskCreateOptions{
+		ProgramPolicyJSON: []byte(`{"program_id":`),
+	}); err == nil {
+		t.Fatal("invalid policy JSON was accepted")
 	}
 }

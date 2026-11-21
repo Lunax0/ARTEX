@@ -2,7 +2,9 @@ package intercept
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // Step 2.1: the pinned dialer of the platform-owned HTTP clients. Without a
@@ -533,5 +536,206 @@ func TestPinUsedRecordsEffectiveNameOnly(t *testing.T) {
 	g.passes("pinned", g.fetch(appURL))
 	if got := g.store.outcomes(); len(got) != 1 || got[0] != "allowed/pin_match" || !g.store.logged[0].Audit.Targets[0].NameOnlyEffective {
 		t.Fatalf("rows %v, target %+v; want a name-only first use", got, g.store.logged[0].Audit.Targets[0])
+	}
+}
+
+func compiledDialPolicy(t *testing.T, allowedPorts ...uint16) *policy.CompiledPolicy {
+	t.Helper()
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		t.Setenv(key, "")
+	}
+	ports := allowedPorts
+	if len(ports) == 0 {
+		ports = []uint16{80, 443}
+	}
+	now := time.Now().UTC()
+	sum := sha256.Sum256([]byte("dial policy source"))
+	compiled, err := policy.CompileAt(policy.ProgramPolicy{
+		SchemaVersion: policy.SchemaVersion,
+		ProgramID:     "dial-policy-test",
+		PolicyURL:     "https://bugcrowd.com/engagements/dial-policy-test",
+		SourceSHA256:  hex.EncodeToString(sum[:]),
+		RetrievedAt:   now,
+		ApprovedAt:    now,
+		ApprovedBy:    "operator",
+		ExpiresAt:     now.Add(time.Hour),
+		InScope: []policy.AssetRule{
+			{Pattern: "app.example.com", Ports: ports},
+			{Pattern: "203.0.113.0/24", Ports: ports},
+		},
+		Limits: policy.Limits{RequestsPerSecond: 1, Burst: 1, MaxConcurrency: 1, RequestTimeoutSecond: 30},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return compiled
+}
+
+// A policy-bound scope with the optional Target Gate off still resolves the
+// hostname, checks every answer, and dials only the exact checked IP.
+func TestProgramPolicyDialEnforcedWithTargetGateOff(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "policy-allowed")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	scope.ProgramPolicyAudit = func(context.Context, string, string, string, string, string, string, []string) error { return nil }
+	ctx := WithTargetScope(context.Background(), scope)
+
+	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "policy-allowed" {
+		t.Fatalf("in-scope policy fetch: %q, %v", body, err)
+	}
+	if got := rec.calls(); !slices.Equal(got, []string{"203.0.113.7:" + port}) || hits.Load() != 1 {
+		t.Fatalf("dialled %v, hits=%d; want exact checked address", got, hits.Load())
+	}
+
+	// A DNS change to a private address is rejected before the socket opens.
+	g.res.set("app.example.com", "10.20.30.40")
+	if _, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeNonPublicAddress) {
+		t.Fatalf("private DNS answer was not blocked: %v", err)
+	}
+	if got := rec.calls(); len(got) != 1 || hits.Load() != 1 {
+		t.Fatalf("private DNS answer reached the network: dialled=%v hits=%d", got, hits.Load())
+	}
+}
+
+func TestProgramPolicyDialRejectsOutOfScopeAndProxyEgress(t *testing.T) {
+	g, rec := dialGate(t)
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t)
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	scope.ProgramPolicyAudit = func(context.Context, string, string, string, string, string, string, []string) error { return nil }
+	ctx := WithTargetScope(context.Background(), scope)
+
+	if _, err := PinnedDialer("WebFetch", true)(ctx, "tcp", "outside.example.org:443"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeOutOfScope) {
+		t.Fatalf("out-of-scope target was not blocked: %v", err)
+	}
+	g.ic.SetUpstreamProxyCheck(func() bool { return true })
+	if _, err := PinnedDialer("WebFetch", true)(ctx, "tcp", "app.example.com:443"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeProxyUnsupported) {
+		t.Fatalf("uncontrolled proxy egress was not blocked: %v", err)
+	}
+	if len(rec.calls()) != 0 {
+		t.Fatalf("policy-denied connections were dialled: %v", rec.calls())
+	}
+}
+
+func TestProgramPolicyDialAlsoAppliesWhenTargetGateIsOn(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "policy-and-pin")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	g.pin("app.example.com", atoiPort(t, port), "203.0.113.7")
+	scope := g.scope
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	scope.ProgramPolicyAudit = func(context.Context, string, string, string, string, string, string, []string) error { return nil }
+	ctx := WithTargetScope(context.Background(), scope)
+
+	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "policy-and-pin" {
+		t.Fatalf("policy + target gate fetch: %q, %v", body, err)
+	}
+	if got := rec.calls(); !slices.Equal(got, []string{"203.0.113.7:" + port}) || hits.Load() != 1 {
+		t.Fatalf("dialled %v, hits=%d; want pinned, policy-checked IP", got, hits.Load())
+	}
+	// A human pin must not widen ProgramPolicy: a later private DNS answer
+	// remains blocked before ARTEX requests a new pin or opens a socket.
+	g.res.set("app.example.com", "10.20.30.40")
+	if _, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeNonPublicAddress) {
+		t.Fatalf("Target Gate pin widened policy to a private DNS answer: %v", err)
+	}
+	if got := rec.calls(); len(got) != 1 || hits.Load() != 1 {
+		t.Fatalf("private DNS answer reached the network: dialled=%v hits=%d", got, hits.Load())
+	}
+}
+
+func TestProgramPolicyDialRechecksRevocationAfterResolution(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "revocation-blocked")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	checks := 0
+	scope.ProgramPolicyCheck = func(context.Context) error {
+		checks++
+		if checks >= 3 {
+			return errors.New("policy source revoked during DNS resolution")
+		}
+		return nil
+	}
+	scope.ProgramPolicyAudit = func(context.Context, string, string, string, string, string, string, []string) error { return nil }
+	ctx := WithTargetScope(context.Background(), scope)
+	_, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) {
+		t.Fatalf("revocation during DNS resolution did not stop the connection: %v", err)
+	}
+	if checks < 3 || len(rec.calls()) != 0 || hits.Load() != 0 {
+		t.Fatalf("revocation check count=%d dialled=%v hits=%d", checks, rec.calls(), hits.Load())
+	}
+}
+
+func TestProgramPolicyDialWritesResolvedIPAuditEvent(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "audited-dial")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	var phase, toolName, authority, action, code string
+	var resolved []string
+	scope.ProgramPolicyAudit = func(_ context.Context, p, tool, target, a, decision, _ string, ips []string) error {
+		phase, toolName, authority, action, code = p, tool, target, a, decision
+		resolved = append([]string(nil), ips...)
+		return nil
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	if body, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/"); err != nil || body != "audited-dial" {
+		t.Fatalf("policy-bound fetch: body=%q err=%v", body, err)
+	}
+	if phase != "dial" || toolName != "WebFetch.Dial" ||
+		authority != "app.example.com:"+port || action != "allow" || code != policy.CodeAllowed ||
+		!slices.Equal(resolved, []string{"203.0.113.7"}) {
+		t.Fatalf("unexpected dial audit: phase=%q tool=%q authority=%q action=%q code=%q IPs=%v", phase, toolName, authority, action, code, resolved)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("target hit count=%d, want 1", hits.Load())
+	}
+}
+
+func TestProgramPolicyDialFailsClosedWithoutAuditWriter(t *testing.T) {
+	g, rec := dialGate(t)
+	srv, hits, port := pinnedServer(t, "missing-audit")
+	rec.route("203.0.113.7:"+port, srv.Listener.Addr().String())
+	g.res.set("app.example.com", "203.0.113.7")
+	scope := g.scope
+	scope.Enabled = func() bool { return false }
+	scope.ProgramPolicyRequired = true
+	scope.ProgramPolicy = compiledDialPolicy(t, uint16(atoiPort(t, port)))
+	scope.ProgramPolicyCheck = func(context.Context) error { return nil }
+	scope.ProgramPolicyAudit = nil
+	ctx := WithTargetScope(context.Background(), scope)
+	_, err := get(ctx, pinnedClient(true), "http://app.example.com:"+port+"/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "audit") {
+		t.Fatalf("dial proceeded without a durable audit writer: %v", err)
+	}
+	if len(rec.calls()) != 0 || hits.Load() != 0 {
+		t.Fatalf("network reached without audit: dials=%v hits=%d", rec.calls(), hits.Load())
 	}
 }

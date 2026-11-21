@@ -11,11 +11,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
 	"github.com/Autumn-27/artex/llmrec"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/norma/llm"
 )
 
@@ -319,6 +321,156 @@ func (s *Server) interceptListTaskItems(w http.ResponseWriter, r *http.Request) 
 		items = []db.InterceptApprovalRow{}
 	}
 	writeJSON(w, 200, map[string]any{"items": items, "total": total, "page": page, "page_size": size})
+}
+
+// programPolicyTaskEvents returns the sanitized, append-only ProgramPolicy decision ledger for one task.
+// programPolicyStatus reports whether a task's exact approved policy source
+// is active, expired or revoked. It never exposes raw policy input.
+func (s *Server) programPolicyStatus(w http.ResponseWriter, r *http.Request) {
+	if s.pg(w) == nil {
+		return
+	}
+	taskID := strings.TrimSpace(r.PathValue("taskID"))
+	task, ok := s.m.Task(taskID)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "task not found")
+		return
+	}
+	if !task.ProgramPolicyBound {
+		writeErr(w, http.StatusConflict, "task has no approved ProgramPolicy snapshot")
+		return
+	}
+	taskNum, err := strconv.ParseInt(taskID, 10, 64)
+	if err != nil || taskNum <= 0 {
+		writeErr(w, http.StatusBadRequest, "bad task id")
+		return
+	}
+	stored, err := s.m.PG().GetTask(taskNum)
+	if err != nil || stored == nil || len(stored.ProgramPolicyJSON) == 0 {
+		writeErr(w, http.StatusConflict, "task has no readable ProgramPolicy snapshot")
+		return
+	}
+	var snapshot policy.ProgramPolicy
+	if err := json.Unmarshal(stored.ProgramPolicyJSON, &snapshot); err != nil || snapshot.ExpiresAt.IsZero() {
+		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
+		return
+	}
+	now := time.Now().UTC()
+	if snapshot.RetrievedAt.After(now) || snapshot.ApprovedAt.After(now) {
+		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
+		return
+	}
+	// Validate the snapshot at the instant immediately before its own expiry.
+	// This distinguishes a structurally invalid policy from a valid policy that
+	// has simply expired since the task was created.
+	if _, err := policy.CompileAt(snapshot, snapshot.ExpiresAt.Add(-time.Nanosecond)); err != nil {
+		writeErr(w, http.StatusConflict, "task has an invalid ProgramPolicy snapshot")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	revocation, err := s.m.PG().GetProgramPolicyRevocation(ctx, snapshot.ProgramID, snapshot.SourceSHA256)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not verify ProgramPolicy status")
+		return
+	}
+	expired := !snapshot.ExpiresAt.After(now)
+	revoked := revocation != nil
+	writeJSON(w, http.StatusOK, map[string]any{
+		"program_id": snapshot.ProgramID, "source_sha256": snapshot.SourceSHA256,
+		"expires_at": snapshot.ExpiresAt, "expired": expired,
+		"revoked": revoked, "active": !expired && !revoked,
+		"revocation": revocation,
+	})
+}
+
+type programPolicyRevokeRequest struct {
+	Reason string `json:"reason"`
+}
+
+// programPolicyRevoke permanently revokes the exact approved source snapshot
+// shared by every task using the same program id and policy source digest.
+func (s *Server) programPolicyRevoke(w http.ResponseWriter, r *http.Request) {
+	if s.pg(w) == nil {
+		return
+	}
+	taskID := strings.TrimSpace(r.PathValue("taskID"))
+	task, ok := s.m.Task(taskID)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "task not found")
+		return
+	}
+	if !task.ProgramPolicyBound || task.ProgramPolicy == nil || task.ProgramPolicyError != "" {
+		writeErr(w, http.StatusConflict, "task has no valid approved ProgramPolicy snapshot to revoke")
+		return
+	}
+	actor := s.approver(r)
+	if actor == "" {
+		writeErr(w, http.StatusUnauthorized, "a valid authenticated operator identity is required")
+		return
+	}
+	var req programPolicyRevokeRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid revocation request")
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" || len(reason) > 2048 {
+		writeErr(w, http.StatusBadRequest, "revocation reason is required and must be at most 2048 characters")
+		return
+	}
+	snapshot := task.ProgramPolicy.Snapshot()
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := s.m.PG().RevokeProgramPolicy(ctx, snapshot.ProgramID, snapshot.SourceSHA256, actor, reason); err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not persist ProgramPolicy revocation")
+		return
+	}
+	record, err := s.m.PG().GetProgramPolicyRevocation(ctx, snapshot.ProgramID, snapshot.SourceSHA256)
+	if err != nil || record == nil {
+		writeErr(w, http.StatusInternalServerError, "could not verify ProgramPolicy revocation")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"revoked": true, "program_id": record.ProgramID,
+		"source_sha256": record.SourceSHA256, "revoked_at": record.RevokedAt,
+		"revoked_by": record.RevokedBy, "reason": record.Reason,
+		"scope": "all tasks using this program id and exact source digest",
+	})
+}
+
+func (s *Server) programPolicyTaskEvents(w http.ResponseWriter, r *http.Request) {
+	pg := s.pg(w)
+	if pg == nil {
+		return
+	}
+	taskID := strings.TrimSpace(r.PathValue("taskID"))
+	if taskID == "" {
+		writeErr(w, http.StatusBadRequest, "bad task id")
+		return
+	}
+	if _, ok := s.m.Task(taskID); !ok {
+		writeErr(w, http.StatusNotFound, "task not found")
+		return
+	}
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			writeErr(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		limit = min(parsed, 500)
+	}
+	items, err := pg.ListTaskProgramPolicyEvents(taskID, limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "ProgramPolicy event history query failed")
+		return
+	}
+	if items == nil {
+		items = []db.ProgramPolicyEvent{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
 }
 
 func (s *Server) interceptHistory(w http.ResponseWriter, r *http.Request) {

@@ -18,7 +18,6 @@ const executeExtraTool = "ExecuteExtraTool"
 // domain tools, which read and write the platform's own records. Every name
 // that is not listed here is scanned, so a tool added later is gated by default.
 var noTargetTools = toolSet(
-	"web_search",
 	"Read", "Write", "Edit", "MultiEdit", "LS", "Glob", "Grep",
 	"TodoWrite", "sleep", "TaskOutput", "TaskStop", "TaskList",
 	// exploration graph, assets, findings, goals (agent.ToolSet)
@@ -41,6 +40,24 @@ var noTargetTools = toolSet(
 	// recorded traffic
 	"traffic_search", "traffic_get", "traffic_blob", "traffic_messages",
 )
+
+// IsKnownNoTargetTool reports whether toolName is in the explicit allowlist of
+// tools whose inputs do not represent target network activity. It is used by
+// policy-bound guards to permit only known platform/internal tools; unknown
+// tools, MCP, custom tools and deferred execution are not implicitly trusted.
+func IsKnownNoTargetTool(toolName string) bool {
+	if !noTargetTools[toolName] {
+		return false
+	}
+	switch toolName {
+	case executeExtraTool, "spawn_task", "create_skill", "update_skill_file", "delete_assets_by_host":
+		// These mutate global/platform state or create a child execution context
+		// that would need its own inherited, enforced policy snapshot.
+		return false
+	default:
+		return true
+	}
+}
 
 func toolSet(names ...string) map[string]bool {
 	m := make(map[string]bool, len(names))

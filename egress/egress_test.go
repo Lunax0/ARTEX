@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // open is a profile that does not limit, for the tests of one lever.
@@ -275,5 +276,168 @@ func TestUserAgentAndEnv(t *testing.T) {
 		if u, _ := url.Parse(in); HostKey(u) != want {
 			t.Errorf("HostKey(%s) = %q, want %q", in, HostKey(u), want)
 		}
+	}
+}
+
+func TestPolicyDoSharesOneRateBucketAcrossHosts(t *testing.T) {
+	digest := "test-policy-shared-rate-bucket"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 2, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	first, _ := url.Parse("https://one.example.com/")
+	second, _ := url.Parse("https://two.example.net/")
+	start := time.Now()
+	if _, err := PolicyDo(context.Background(), first, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PolicyDo(context.Background(), second, digest, limits, func() (int, error) {
+		return 2, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed < 450*time.Millisecond {
+		t.Fatalf("different hosts did not share the program RPS bucket: elapsed %s", elapsed)
+	}
+}
+
+func TestPolicyDoSharesConcurrencyAcrossHosts(t *testing.T) {
+	digest := "test-policy-shared-concurrency"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 100, Burst: 100, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u1, _ := url.Parse("https://one.example.com/")
+	u2, _ := url.Parse("https://two.example.net/")
+	var inflight, peak atomic.Int64
+	var wg sync.WaitGroup
+	for _, u := range []*url.URL{u1, u2} {
+		wg.Add(1)
+		go func(u *url.URL) {
+			defer wg.Done()
+			_, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+				n := inflight.Add(1)
+				for p := peak.Load(); n > p && !peak.CompareAndSwap(p, n); p = peak.Load() {
+				}
+				time.Sleep(40 * time.Millisecond)
+				inflight.Add(-1)
+				return 1, nil
+			})
+			if err != nil {
+				t.Errorf("PolicyDo: %v", err)
+			}
+		}(u)
+	}
+	wg.Wait()
+	if got := peak.Load(); got != 1 {
+		t.Fatalf("maximum concurrent policy-bound calls = %d, want 1", got)
+	}
+}
+
+func TestPolicyDoHonorsCancellationWhileWaiting(t *testing.T) {
+	digest := "test-policy-cancel-wait"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 1, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	called := false
+	_, err := PolicyDo(ctx, u, digest, limits, func() (int, error) {
+		called = true
+		return 2, nil
+	})
+	if err == nil || called {
+		t.Fatalf("cancelled wait: err=%v callback_called=%v", err, called)
+	}
+}
+
+func TestPolicyWaitChargesAdditionalRedirectRequest(t *testing.T) {
+	digest := "test-policy-redirect-token"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 2, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if err := PolicyWait(context.Background(), digest, limits); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed < 450*time.Millisecond {
+		t.Fatalf("redirect did not consume a second program token: waited %s", elapsed)
+	}
+}
+
+func TestPolicyWaitHonorsCancellation(t *testing.T) {
+	digest := "test-policy-redirect-cancel"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 1, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if err := PolicyWait(ctx, digest, limits); err == nil {
+		t.Fatal("PolicyWait succeeded after its context was cancelled")
+	}
+}
+
+func TestPolicyGovernorRejectsChangedLimitsForSameRevision(t *testing.T) {
+	digest := "test-policy-limits-immutable"
+	policyGovernors.Lock()
+	delete(policyGovernors.byDigest, digest)
+	policyGovernors.Unlock()
+	limits := policy.Limits{
+		RequestsPerSecond: 2, Burst: 1, MaxConcurrency: 1,
+		RequestTimeoutSecond: 5, MaxRetries: 0,
+	}
+	u, _ := url.Parse("https://one.example.com/")
+	if _, err := PolicyDo(context.Background(), u, digest, limits, func() (int, error) {
+		return 1, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	changed := limits
+	changed.RequestsPerSecond = 3
+	if err := PolicyWait(context.Background(), digest, changed); err == nil {
+		t.Fatal("same policy revision accepted a different RPS limit")
+	}
+	changed = limits
+	changed.RequestTimeoutSecond = 10
+	if err := PolicyWait(context.Background(), digest, changed); err == nil {
+		t.Fatal("same policy revision accepted a different timeout limit")
 	}
 }

@@ -144,6 +144,43 @@ func (d *DB) DecideInterceptPending(id int64, status string) error {
 	return err
 }
 
+// CreateProgramPolicyDecision inserts a final authorization decision made by
+// the mandatory ProgramPolicy layer. Unlike user-rule/model decisions, its
+// provenance and actor are explicit: decision_source=program_policy and
+// decided_by=system.
+func (d *DB) CreateProgramPolicyDecision(convID int64, taskID, agentName, toolName string, input []byte, status, reason string, audit *InterceptAudit) (int64, error) {
+	if status != "allowed" && status != "denied" {
+		return 0, fmt.Errorf("invalid ProgramPolicy decision status %q", status)
+	}
+	if strings.TrimSpace(taskID) == "" {
+		return 0, fmt.Errorf("ProgramPolicy decision requires a task id")
+	}
+	raw := json.RawMessage(input)
+	if len(raw) == 0 || !json.Valid(raw) {
+		raw = json.RawMessage("{}")
+	}
+	var convIDPtr *int64
+	if convID > 0 {
+		convIDPtr = &convID
+	}
+	var auditJSON any
+	if audit != nil {
+		encoded, err := json.Marshal(audit)
+		if err != nil {
+			return 0, err
+		}
+		auditJSON = encoded
+	}
+	var id int64
+	err := d.QueryRow(`
+INSERT INTO intercept_pending(conversation_id, task_id, agent_name, tool_name, tool_input, status, reason, decided_at, decision_source, audit, decided_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'program_policy', $8, 'system')
+RETURNING id`,
+		convIDPtr, taskID, agentName, toolName, raw, status, reason, auditJSON,
+	).Scan(&id)
+	return id, err
+}
+
 // CreateDecidedIntercept inserts an intercept_pending row ALREADY in a final state
 // (status = 'allowed' | 'denied'), decided_at stamped now. Used to log allow/deny
 // rule matches for observability — they don't block and need no user action, so unlike

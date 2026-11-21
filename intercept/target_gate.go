@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // Block codes of the gate decision. Like the codes of a target request they
@@ -153,6 +154,21 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 	if c.ref, err = c.scope.ref(); err != nil {
 		return nil, TargetResult{Code: TargetGateUnavailable, Host: targets[0].Host, Port: targets[0].Port, Reason: err.Error()}
 	}
+	if c.scope.ProgramPolicyRequired {
+		if c.scope.ProgramPolicyError != "" || c.scope.ProgramPolicy == nil {
+			reason := c.scope.ProgramPolicyError
+			if reason == "" {
+				reason = "the required program policy snapshot is unavailable"
+			}
+			return nil, TargetResult{Code: policy.CodeUnavailable, Host: targets[0].Host, Port: targets[0].Port, Reason: reason}
+		}
+		for _, target := range targets {
+			decision := c.scope.ProgramPolicy.CheckTarget(target.Host, target.Port)
+			if !decision.Allowed {
+				return nil, TargetResult{Code: decision.Code, Host: target.Host, Port: target.Port, Reason: decision.Reason}
+			}
+		}
+	}
 	first := &checkedTarget{Target: targets[0]}
 	rules, err := i.targets.BlockRules(c.ref)
 	if err != nil {
@@ -163,6 +179,15 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 		return c.block(TargetGateUnavailable, "gate_unavailable", first, "the exemption list could not be read: "+err.Error())
 	}
 
+	if c.scope.ProgramPolicyRequired {
+		for _, target := range targets {
+			if ex.derived[db.TargetKey(target.Host, target.Port)] {
+				ct := &checkedTarget{Target: target}
+				return c.block(policy.CodeProxyUnsupported, "policy_proxy_unsupported", ct,
+					"this target resolves to a platform-derived service/proxy exemption; its ultimate egress destination is not controlled by ProgramPolicy")
+			}
+		}
+	}
 	// Block rules come first, and an exempt or pinned host that matches one is
 	// blocked. They are matched on what the call declares before anything is
 	// resolved: a hit there costs no lookup, for any target of the call.
@@ -195,12 +220,17 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 		}
 	}
 	// Only then are the names resolved, and the rules matched on the addresses.
-	// A name the configuration exempts is never resolved.
+	// A name the configuration exempts is never resolved in legacy gate-only
+	// scopes; policy-bound scopes reject derived service/proxy exemptions and
+	// resolve every target name that is permitted to proceed.
 	for _, ct := range checked {
-		if ct.Kind != TargetDomain || ex.derived[db.TargetKey(ct.Host, ct.Port)] {
+		if ct.Kind != TargetDomain || ex.derived[db.TargetKey(ct.Host, ct.Port)] && !c.scope.ProgramPolicyRequired {
 			continue
 		}
 		c.resolve(ct, c.fresh)
+		if decision := c.checkProgramPolicy(ct); decision.Code != "" {
+			return c.block(decision.Code, "policy_denied", ct, decision.Reason)
+		}
 		if rule, hit := blockRule(rules, ct); hit {
 			return c.block(TargetRuleBlocked, "rule_blocked", ct, fmt.Sprintf("%s is blocked by an asset rule. %s", ct.Target, rule.Reason()))
 		}
@@ -249,6 +279,9 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 			if c.resolve(ct, true); ct.err != nil {
 				return c.block(TargetResolveFailed, "resolve_failed", ct, c.resolveFailure(ct))
 			}
+			if decision := c.checkProgramPolicy(ct); decision.Code != "" {
+				return c.block(decision.Code, "policy_denied", ct, decision.Reason)
+			}
 			if rule, hit := blockRule(rules, ct); hit {
 				return c.block(TargetRuleBlocked, "rule_blocked", ct, fmt.Sprintf("%s is blocked by an asset rule. %s", ct.Target, rule.Reason()))
 			}
@@ -293,6 +326,31 @@ func (c *targetCheck) run(targets []Target) ([]TargetRequest, TargetResult) {
 		}
 	}
 	return unpinned, TargetResult{}
+}
+
+// checkProgramPolicy validates every address the target gate has just
+// resolved. It runs on the same resolution that will be pinned or dialled.
+func (c *targetCheck) checkProgramPolicy(ct *checkedTarget) TargetResult {
+	if !c.scope.ProgramPolicyRequired {
+		return TargetResult{}
+	}
+	if c.scope.ProgramPolicy == nil || c.scope.ProgramPolicyError != "" {
+		reason := c.scope.ProgramPolicyError
+		if reason == "" {
+			reason = "the required program policy snapshot is unavailable"
+		}
+		return TargetResult{Code: policy.CodeUnavailable, Host: ct.Host, Port: ct.Port, Reason: reason}
+	}
+	if ct.err != nil {
+		return TargetResult{} // the ordinary resolver failure below remains authoritative
+	}
+	for _, rawIP := range ct.ips {
+		decision := c.scope.ProgramPolicy.CheckResolvedIP(ct.Host, ct.Port, rawIP)
+		if !decision.Allowed {
+			return TargetResult{Code: decision.Code, Host: ct.Host, Port: ct.Port, Reason: decision.Reason}
+		}
+	}
+	return TargetResult{}
 }
 
 // resolve fills the addresses of a name. fresh skips the cache.

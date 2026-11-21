@@ -2,6 +2,7 @@ package intercept
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // Step 1.9: every redirect hop of a platform-owned client goes through the gate.
@@ -226,4 +228,148 @@ func atoiPort(t *testing.T, s string) int {
 		t.Fatalf("port %q", s)
 	}
 	return p
+}
+
+func TestProgramPolicyRedirectCheckIsIndependentOfTargetGate(t *testing.T) {
+	compiled := compiledDialPolicy(t)
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiled,
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+		ProgramPolicyAudit: func(context.Context, string, string, string, string, string, string, []string) error { return nil },
+	}
+	var charged []string
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(_ context.Context, rawURL string) error {
+		charged = append(charged, rawURL)
+		return nil
+	})
+
+	if err := hop(ctx, "https://outside.example.org/", "https://app.example.com/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeOutOfScope) {
+		t.Fatalf("out-of-scope redirect was not blocked with Target Gate off: %v", err)
+	}
+	if len(charged) != 0 {
+		t.Fatalf("out-of-scope redirect consumed budget: %v", charged)
+	}
+	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err != nil {
+		t.Fatalf("in-scope redirect unexpectedly blocked: %v", err)
+	}
+	if err := hop(ctx, "https://app.example.com/third", "https://app.example.com/", "https://app.example.com/next"); err != nil {
+		t.Fatalf("second in-scope redirect unexpectedly blocked: %v", err)
+	}
+	if len(charged) != 2 || charged[0] != "https://app.example.com/next" || charged[1] != "https://app.example.com/third" {
+		t.Fatalf("charged redirects = %v, want both allowed hops in order", charged)
+	}
+	if err := hop(ctx, "ftp://app.example.com/file", "https://app.example.com/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeInvalidTarget) {
+		t.Fatalf("non-HTTP redirect was not blocked: %v", err)
+	}
+	if len(charged) != 2 {
+		t.Fatalf("invalid redirect consumed budget: %v", charged)
+	}
+}
+
+func TestProgramPolicyRedirectFailsClosedWhenSnapshotMissing(t *testing.T) {
+	ctx := WithTargetScope(context.Background(), TargetScope{
+		TaskID: "77", Enabled: func() bool { return false }, ProgramPolicyRequired: true,
+		ProgramPolicyError: "stored policy failed validation",
+	})
+	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err == nil ||
+		!strings.Contains(err.Error(), policy.CodeUnavailable) {
+		t.Fatalf("missing policy snapshot was not blocked: %v", err)
+	}
+}
+
+func TestProgramPolicyRedirectFailsClosedWithoutBudgetCallback(t *testing.T) {
+	ctx := WithTargetScope(context.Background(), TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+	})
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "budget") || !strings.Contains(err.Error(), "not followed") {
+		t.Fatalf("redirect without a budget callback was not blocked: %v", err)
+	}
+}
+
+func TestProgramPolicyRedirectFailsClosedWhenBudgetWaitFails(t *testing.T) {
+	ctx := WithTargetScope(context.Background(), TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+	})
+	ctx = WithRequestBudget(ctx, func(context.Context, string) error {
+		return context.DeadlineExceeded
+	})
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "deadline exceeded") || !strings.Contains(err.Error(), "not followed") {
+		t.Fatalf("redirect after failed budget wait was not blocked: %v", err)
+	}
+}
+
+func TestProgramPolicyRedirectStopsWhenSourceIsRevoked(t *testing.T) {
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error {
+			return errors.New("approved policy source has been revoked")
+		},
+	}
+	var charged []string
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(_ context.Context, rawURL string) error {
+		charged = append(charged, rawURL)
+		return nil
+	})
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "revoked") {
+		t.Fatalf("revoked policy redirect was not blocked: %v", err)
+	}
+	if len(charged) != 0 {
+		t.Fatalf("revoked redirect consumed a request token: %v", charged)
+	}
+}
+
+func TestProgramPolicyRedirectWritesSanitizedAuditEvent(t *testing.T) {
+	var phase, toolName, authority, action, code string
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+		ProgramPolicyAudit: func(_ context.Context, p, tool, target, a, decision, _ string, ips []string) error {
+			phase, toolName, authority, action, code = p, tool, target, a, decision
+			if len(ips) != 0 {
+				t.Errorf("redirect audit unexpectedly included resolved IPs: %v", ips)
+			}
+			return nil
+		},
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(context.Context, string) error { return nil })
+	if err := hop(ctx, "https://app.example.com/next", "https://app.example.com/"); err != nil {
+		t.Fatalf("in-scope redirect blocked: %v", err)
+	}
+	if phase != "redirect" || toolName != "WebFetch.Redirect" ||
+		authority != "app.example.com:443" || action != "allow" || code != policy.CodeAllowed {
+		t.Fatalf("unexpected redirect audit: phase=%q tool=%q authority=%q action=%q code=%q", phase, toolName, authority, action, code)
+	}
+}
+
+func TestProgramPolicyRedirectFailsClosedWithoutAuditWriter(t *testing.T) {
+	scope := TargetScope{
+		TaskID: "77", Enabled: func() bool { return false },
+		ProgramPolicyRequired: true, ProgramPolicy: compiledDialPolicy(t),
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+	}
+	ctx := WithTargetScope(context.Background(), scope)
+	ctx = WithRequestBudget(ctx, func(context.Context, string) error { return nil })
+	err := hop(ctx, "https://app.example.com/next", "https://app.example.com/")
+	if err == nil || !strings.Contains(err.Error(), policy.CodeUnavailable) ||
+		!strings.Contains(err.Error(), "audit") {
+		t.Fatalf("redirect proceeded without a durable audit writer: %v", err)
+	}
 }

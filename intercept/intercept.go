@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"regexp"
 	"strconv"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/policy"
 )
 
 // ctxKey is the unexported context key type to avoid collisions.
@@ -84,18 +86,97 @@ type targetScopeCtxKey struct{}
 // decision on an unpinned target before it fails with the request left open.
 const DefaultTargetWaitBound = 300 * time.Second
 
-// TargetScope is what an approval for an asset target is bound to: one task
-// (TaskID) or one conversation (ConversationID), never both. Enabled reports the
-// scope's opt-in flag and is read on every gated call; nil means the gate is off.
-// WaitBound caps the wait for a human decision; 0 means never wait.
-// Interceptor is the one that owns the gate of this session, so that code
-// holding only a context (an HTTP redirect callback) can reach it.
+// TargetScope carries the per-session target controls: an optional human
+// approval gate and, for Bug Bounty tasks, an unconditional ProgramPolicy.
+// Enabled reports the gate's opt-in flag; nil means the gate is off. WaitBound
+// caps a human decision wait; 0 means never wait. Interceptor owns the gate and
+// its controlled resolver/dialer, so redirect and dial callbacks can reach it.
+// AcquireProgramPolicyBudget obtains a PostgreSQL-backed request token and
+// concurrency lease shared across ARTEX instances.
+func (i *Interceptor) AcquireProgramPolicyBudget(ctx context.Context, key string, limits policy.Limits) (func(), error) {
+	if i == nil || i.db == nil {
+		return nil, errors.New("ProgramPolicy shared budget database is unavailable")
+	}
+	return i.db.AcquireProgramPolicyBudget(ctx, key, limits)
+}
+
+// CheckProgramPolicyRevocation verifies that the exact approved policy source
+// has not been revoked. Database errors are returned so callers can fail closed.
+func (i *Interceptor) CheckProgramPolicyRevocation(ctx context.Context, programID, sourceSHA256 string) error {
+	if i == nil || i.db == nil {
+		return errors.New("ProgramPolicy revocation database is unavailable")
+	}
+	revoked, err := i.db.IsProgramPolicyRevoked(ctx, programID, sourceSHA256)
+	if err != nil {
+		return fmt.Errorf("ProgramPolicy revocation check failed: %w", err)
+	}
+	if revoked {
+		return errors.New("the approved ProgramPolicy source has been revoked; create and approve a refreshed policy snapshot")
+	}
+	return nil
+}
+
+// LogProgramPolicyNetworkEvent appends one sanitized redirect or resolved-dial
+// event. Allowed network events must be durable before the request proceeds.
+func (i *Interceptor) LogProgramPolicyNetworkEvent(ctx context.Context, phase, toolName, targetAuthority, action, decisionCode, reason string, resolvedIPs []string) error {
+	if i == nil || i.db == nil {
+		return errors.New("ProgramPolicy network audit database is unavailable")
+	}
+	taskID, agentName := taskInfoFromCtx(ctx)
+	scope, scoped := TargetScopeFromContext(ctx)
+	if taskID == "" && scoped {
+		taskID = scope.TaskID
+	}
+	if taskID == "" {
+		return errors.New("ProgramPolicy network audit has no task identity")
+	}
+	digest := ""
+	if scoped && scope.ProgramPolicy != nil {
+		digest = scope.ProgramPolicy.Digest()
+	}
+	var conversationID *int64
+	if id := ConvIDFromContext(ctx); id > 0 {
+		conversationID = &id
+	}
+	executionStatus := "not_executed"
+	if action == "allow" {
+		executionStatus = "unknown"
+	}
+	_, err := i.db.CreateProgramPolicyEvent(db.ProgramPolicyEvent{
+		TaskID: taskID, ConversationID: conversationID, AgentName: agentName,
+		ToolName: toolName, DecisionCode: decisionCode, Action: action,
+		EventPhase: phase, TargetAuthority: targetAuthority, ResolvedIPs: resolvedIPs,
+		PolicyDigest: digest, ExecutionStatus: executionStatus, Reason: reason,
+	})
+	return err
+}
+
+// ConsumeProgramPolicyRequest charges one redirect hop against the shared
+// PostgreSQL-backed token bucket.
+func (i *Interceptor) ConsumeProgramPolicyRequest(ctx context.Context, key string, limits policy.Limits) error {
+	if i == nil || i.db == nil {
+		return errors.New("ProgramPolicy shared budget database is unavailable")
+	}
+	return i.db.ConsumeProgramPolicyRequest(ctx, key, limits)
+}
+
 type TargetScope struct {
 	TaskID         string
 	ConversationID int64
 	Enabled        func() bool
 	WaitBound      time.Duration
 	Interceptor    *Interceptor
+
+	// ProgramPolicy is an immutable, reviewed authorization snapshot. Unlike
+	// Enabled (the optional human approval gate), Required is unconditional:
+	// when true, every target and connection must pass this policy.
+	ProgramPolicyRequired bool
+	ProgramPolicy         *policy.CompiledPolicy
+	ProgramPolicyError    string
+	ProgramPolicyAcquire  func(context.Context, string, policy.Limits) (func(), error)
+	ProgramPolicyWait     func(context.Context, string, policy.Limits) error
+	ProgramPolicyCheck    func(context.Context) error
+	ProgramPolicyAudit    func(context.Context, string, string, string, string, string, string, []string) error
 }
 
 // WithTargetScope returns a child context carrying the target-gate scope of the
@@ -108,6 +189,25 @@ func WithTargetScope(ctx context.Context, s TargetScope) context.Context {
 func TargetScopeFromContext(ctx context.Context) (s TargetScope, ok bool) {
 	s, ok = ctx.Value(targetScopeCtxKey{}).(TargetScope)
 	return s, ok
+}
+
+// RequestBudgetFunc charges one additional HTTP request made inside a
+// platform-owned client (for example, a followed redirect). The URL is passed
+// for diagnostics; the policy budget itself is shared across all hosts.
+type RequestBudgetFunc func(context.Context, string) error
+
+type requestBudgetCtxKey struct{}
+
+// WithRequestBudget attaches the mandatory per-program request-budget callback
+// to a request context. Child requests created by net/http retain this value.
+func WithRequestBudget(ctx context.Context, budget RequestBudgetFunc) context.Context {
+	return context.WithValue(ctx, requestBudgetCtxKey{}, budget)
+}
+
+// RequestBudgetFromContext returns the request-budget callback attached to ctx.
+func RequestBudgetFromContext(ctx context.Context) (RequestBudgetFunc, bool) {
+	budget, ok := ctx.Value(requestBudgetCtxKey{}).(RequestBudgetFunc)
+	return budget, ok && budget != nil
 }
 
 // compiledRule is an InterceptRule with the regex pre-compiled (nil for string rules)
@@ -407,6 +507,7 @@ type Decision struct {
 	ModelFallback    bool
 	RuleName         string
 	ConfigDigest     string
+	PolicyCode       string // mandatory ProgramPolicy decision code; empty for ordinary intercept decisions
 	ProfileID        int64
 	Action           string // "allow" | "deny" | "ask"
 	Message          string
@@ -814,6 +915,75 @@ func (i *Interceptor) Log(ctx context.Context, convID int64, dec Decision, toolN
 	if err == nil {
 		i.bindResult(ctx, id, audit)
 	}
+}
+
+// LogProgramPolicy records a mandatory ProgramPolicy allow/deny decision
+// with explicit system provenance. The supplied input must already be
+// sanitized; callers must not persist credentials, cookies or raw query data.
+func (i *Interceptor) LogProgramPolicy(ctx context.Context, convID int64, dec Decision, toolName string, safeInput []byte, status string) error {
+	if i.db == nil {
+		return errors.New("ProgramPolicy audit database is unavailable")
+	}
+	taskID, agentName := taskInfoFromCtx(ctx)
+	if taskID == "" {
+		if scope, ok := TargetScopeFromContext(ctx); ok {
+			taskID = scope.TaskID
+		}
+	}
+	if taskID == "" {
+		return errors.New("ProgramPolicy audit requires task context")
+	}
+	executionStatus := "not_executed"
+	if status == "allowed" {
+		// ProgramPolicy runs before the tool's completion can be correlated
+		// safely, so do not claim an execution result we cannot prove.
+		executionStatus = "unknown"
+	}
+	// Do not attach user-message/history context to policy decisions. This
+	// record intentionally contains only the policy decision metadata and the
+	// caller-supplied sanitized target authority.
+	audit := &db.InterceptAudit{
+		Correlation: "unavailable", InputDigest: digestInput(safeInput),
+		CapturedAt: time.Now().UTC(), InitialAction: dec.Action,
+		InitialReason: dec.Message, EffectiveAction: dec.Action,
+		DecisionReason: dec.Message, ConfigDigest: dec.ConfigDigest,
+		ExecutionStatus: executionStatus,
+	}
+	targetAuthority := ""
+	var safeTarget struct {
+		Target string `json:"target"`
+	}
+	if json.Unmarshal(safeInput, &safeTarget) == nil {
+		targetAuthority = safeTarget.Target
+	}
+	action := "deny"
+	executionStatus = "not_executed"
+	if status == "allowed" {
+		action = "allow"
+		executionStatus = "unknown"
+	}
+	_, eventErr := i.db.CreateProgramPolicyEvent(db.ProgramPolicyEvent{
+		TaskID: taskID, ConversationID: func() *int64 {
+			if convID > 0 {
+				return &convID
+			}
+			return nil
+		}(),
+		AgentName: agentName, ToolName: toolName, DecisionCode: dec.PolicyCode,
+		Action: action, TargetAuthority: targetAuthority, PolicyDigest: dec.ConfigDigest,
+		ExecutionStatus: executionStatus, Reason: dec.Message,
+	})
+	if eventErr != nil {
+		log.Printf("[program-policy] durable event write failed task=%s tool=%s: %v", taskID, toolName, eventErr)
+		return eventErr
+	}
+	id, err := i.db.CreateProgramPolicyDecision(convID, taskID, agentName, toolName, safeInput, status, dec.Message, audit)
+	if err != nil {
+		log.Printf("[program-policy] approval history write failed task=%s tool=%s: %v", taskID, toolName, err)
+	} else {
+		i.bindResult(ctx, id, audit)
+	}
+	return nil
 }
 
 // HandleAsk creates a pending approval record and blocks until the user decides

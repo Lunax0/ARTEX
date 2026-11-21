@@ -168,13 +168,20 @@ function MatchCell({ row, showReason = true }: { row: InterceptApprovalRow; show
   const reason = row.reason?.replace(/^\[model\]\s*/, "");
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      {source(row) === "model" ? (
+      {source(row) === "program_policy" ? (
+        <Badge variant="outline">
+          <ShieldAlertIcon />
+          {t("Program policy")}
+        </Badge>
+      ) : source(row) === "model" ? (
         <Badge variant="outline">
           <BotIcon />
           {t("Model decision")}
         </Badge>
-      ) : (
+      ) : source(row) === "rule" ? (
         <span className="truncate">{row.rule_name || t("Rule not recorded or deleted")}</span>
+      ) : (
+        <Badge variant="outline">{t("Unknown source")}</Badge>
       )}
       {showReason ? (
         <p className="truncate text-muted-foreground text-xs" title={reason}>
@@ -1085,6 +1092,7 @@ export function ApprovalRecords({ taskId }: { taskId?: string }) {
                 <SelectItem value="all">{t("All sources")}</SelectItem>
                 <SelectItem value="model">{t("Model decision")}</SelectItem>
                 <SelectItem value="rule">{t("Rule decision")}</SelectItem>
+                <SelectItem value="program_policy">{t("Program policy")}</SelectItem>
                 <SelectItem value="unknown">{t("Unknown source")}</SelectItem>
               </SelectGroup>
             </SelectContent>

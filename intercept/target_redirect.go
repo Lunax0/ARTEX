@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"strconv"
+
+	"github.com/Autumn-27/artex/policy"
 )
 
 // The HTTP clients the platform owns (WebFetch and the custom http tool)
@@ -23,31 +27,107 @@ const maxRedirects = 10
 // RedirectCheck returns the redirect policy (http.Client.CheckRedirect) of a
 // platform-owned client run by the tool toolName. Everything it needs comes
 // from the context of the request, which net/http keeps on every hop: the
-// target scope of the session and the Interceptor that owns its gate.
+// target scope, the Interceptor that owns its optional gate, and the mandatory
+// request-budget callback of a policy-bound WebFetch invocation.
 //
-// With the gate off, or with no scope in the context (the operator's test
-// endpoint), it only applies the limit of 10 hops: nothing is parsed, resolved,
-// read or written, and the client behaves as with the default policy.
-//
-// A hop no pin or exemption covers is not followed, and the policy never waits:
-// the fetch has its own deadline, which a human decision does not fit in. The
-// request row for the hop's target is found or created (it is durable, so an
-// approval given later lets the retried call follow), and the call fails at
-// once with TARGET_APPROVAL_PENDING. A block rule, a failed lookup or a hop
-// whose target cannot be read fails the call with its block code, and opens no
-// request.
+// With a policy-bound scope, every hop is checked against the program scope
+// and charged to its mandatory request budget, even when the optional gate is
+// off. With only a legacy gate-off scope, it applies the default 10-hop limit
+// and otherwise leaves redirect behavior unchanged.
 func RedirectCheck(toolName string) func(req *http.Request, via []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if len(via) >= maxRedirects {
 			return errors.New("stopped after 10 redirects")
 		}
 		ctx := req.Context()
-		scope, on := renderedScope(ctx)
-		if !on {
-			return nil
+		scope, scoped := TargetScopeFromContext(ctx)
+		from := ""
+		if len(via) > 0 && via[len(via)-1] != nil && via[len(via)-1].URL != nil {
+			from = via[len(via)-1].URL.String()
 		}
-		return checkRedirectHop(ctx, scope, toolName, req.URL.String(), via[len(via)-1].URL.String())
+		logRedirect := func(action, code, reason string) error {
+			if !scoped || !scope.ProgramPolicyRequired {
+				return nil
+			}
+			if scope.ProgramPolicyAudit == nil {
+				return errors.New("the ProgramPolicy redirect audit writer is unavailable")
+			}
+			authority := ""
+			if target, err := urlTarget(req.URL.String()); err == nil {
+				authority = net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
+			}
+			return scope.ProgramPolicyAudit(
+				ctx, "redirect", toolName+".Redirect", authority, action, code, reason, nil,
+			)
+		}
+		if scoped && scope.ProgramPolicyRequired {
+			if scope.ProgramPolicyCheck == nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the ProgramPolicy revocation check is unavailable"}
+				_ = logRedirect("deny", res.Code, res.Reason)
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			if err := scope.ProgramPolicyCheck(ctx); err != nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: err.Error()}
+				_ = logRedirect("deny", res.Code, res.Reason)
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			decision := checkProgramPolicyURL(scope, req.URL.String())
+			if decision.Code != "" {
+				_ = logRedirect("deny", decision.Code, decision.Reason)
+				return &redirectError{res: decision, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+		}
+		// The optional Target Gate runs before charging the request budget: a
+		// redirect that is denied or awaiting approval is not sent and consumes
+		// no request token.
+		if scoped && scope.Enabled != nil && scope.Enabled() {
+			if from == "" {
+				return errors.New("redirect origin is unavailable")
+			}
+			if err := checkRedirectHop(ctx, scope, toolName, req.URL.String(), from); err != nil {
+				return err
+			}
+		}
+		// Every policy-bound redirect that will actually be followed consumes
+		// another token. Missing budget wiring is a fail-closed condition; this
+		// prevents a future HTTP client from accidentally bypassing accounting.
+		if scoped && scope.ProgramPolicyRequired {
+			budget, ok := RequestBudgetFromContext(ctx)
+			if !ok {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the mandatory per-program request budget is unavailable"}
+				_ = logRedirect("deny", res.Code, res.Reason)
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			if err := budget(ctx, req.URL.String()); err != nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the per-program request budget could not be acquired: " + err.Error()}
+				_ = logRedirect("deny", res.Code, res.Reason)
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+			if err := logRedirect("allow", policy.CodeAllowed, "redirect hop passed policy and request-budget checks"); err != nil {
+				res := TargetResult{Code: policy.CodeUnavailable, Reason: "the redirect audit event could not be persisted: " + err.Error()}
+				return &redirectError{res: res, from: from, hop: req.URL.String(), scope: scope.scopeName()}
+			}
+		}
+		return nil
 	}
+}
+
+// checkProgramPolicyURL applies the mandatory program scope to a redirect
+// hop independently of the optional Target Gate.
+func checkProgramPolicyURL(scope TargetScope, raw string) TargetResult {
+	if scope.ProgramPolicyError != "" || scope.ProgramPolicy == nil {
+		reason := scope.ProgramPolicyError
+		if reason == "" {
+			reason = "the required program policy snapshot is unavailable"
+		}
+		return TargetResult{Code: policy.CodeUnavailable, Reason: reason}
+	}
+	decision := scope.ProgramPolicy.CheckURL(raw)
+	if decision.Allowed {
+		return TargetResult{}
+	}
+	t, _ := urlTarget(raw)
+	return TargetResult{Code: decision.Code, Host: t.Host, Port: t.Port, Reason: decision.Reason}
 }
 
 // checkRedirectHop runs the gate decision on one hop, from the URL that

@@ -1248,6 +1248,19 @@ const TaskRow = React.memo(function TaskRow({
       <TableCell className="font-medium">
         <div className="flex max-w-xs items-center gap-2">
           <TaskNameEditor task={task} onRename={onRename} />
+          {task.program_policy_bound && (
+            <Badge
+              variant="outline"
+              className="shrink-0"
+              title={
+                task.program_policy_valid
+                  ? t("A ProgramPolicy snapshot is attached; expiry and revocation are checked during execution.")
+                  : t("The ProgramPolicy snapshot is invalid; policy-bound execution fails closed.")
+              }
+            >
+              {t("Policy")}
+            </Badge>
+          )}
           {task.active && <StarIcon className="size-4 shrink-0 fill-amber-400 text-amber-400" />}
           {taskIsPinned(task) && <PinIcon className="text-primary size-4 shrink-0" aria-label={t("Pinned")} />}
         </div>
@@ -3175,6 +3188,7 @@ function CreateTaskSheet({
   const [coverageEnabled, setCoverageEnabled] = React.useState(true); // asset coverage feature; on by default. Off = no coverage computed/displayed, no scope accumulation, scope-related tools hidden (company links unaffected)
   const [interceptRules, setInterceptRules] = React.useState<AssetInterceptRuleInput[]>([]); // task-level asset intercept rules (this task only, never entering the global table)
   const [credentials, setCredentials] = React.useState<TaskCredentialInput[]>([]); // test accounts declared at creation (#3); an empty password = the agent registers that account and records it
+  const [programPolicyJSON, setProgramPolicyJSON] = React.useState("");
   // Method 1, file upload: files are staged under drafts/<draftId>/uploads/ before the task is created, and their absolute paths are appended to the description.
   const [uploading, setUploading] = React.useState(false);
   const [uploadCount, setUploadCount] = React.useState(0);
@@ -3225,6 +3239,19 @@ function CreateTaskSheet({
       toast.error(t("Link up to {count} source tasks", { count: MAX_SOURCE_TASKS }));
       return;
     }
+    let programPolicy: Record<string, unknown> | undefined;
+    if (programPolicyJSON.trim()) {
+      try {
+        const parsed: unknown = JSON.parse(programPolicyJSON);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Program policy must be a JSON object");
+        }
+        programPolicy = parsed as Record<string, unknown>;
+      } catch (e) {
+        toast.error(t("Invalid ProgramPolicy JSON: {error}", { error: (e as Error).message }));
+        return;
+      }
+    }
     setCreating(true);
     try {
       const timeoutSec = Math.max(0, Math.floor(Number(timeoutMin) || 0)) * 60;
@@ -3248,6 +3275,7 @@ function CreateTaskSheet({
         credentials: credentials
           .map((c) => ({ domain: c.domain.trim(), username: c.username.trim(), password: c.password, note: c.note?.trim() ?? "" }))
           .filter((c) => c.domain !== "" && c.username !== ""),
+        programPolicy,
       });
       toast.success(t("Task created"));
       setName("");
@@ -3264,6 +3292,7 @@ function CreateTaskSheet({
       setSeedFirstIntent(false);
       setCoverageEnabled(true);
       setInterceptRules([]);
+      setProgramPolicyJSON("");
       setUploadCount(0);
       draftIdRef.current = "";
       setOpen(false);
@@ -3485,6 +3514,56 @@ function CreateTaskSheet({
                 )}
               </FieldDescription>
             </Field>
+
+            <Collapsible>
+              <CollapsibleTrigger className="group flex w-full items-center gap-2 border-t pt-4 text-sm font-medium">
+                <ChevronRightIcon className="text-muted-foreground size-4 transition-transform group-data-[state=open]:rotate-90" />
+                {t("Bug Bounty ProgramPolicy (optional)")}
+                <span className="text-muted-foreground ml-auto text-xs font-normal">{t("Authorization scope snapshot")}</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="grid gap-3 pt-4">
+                <Field>
+                  <FieldLabel htmlFor="program-policy-json">{t("Reviewed program policy JSON")}</FieldLabel>
+                  <Textarea
+                    id="program-policy-json"
+                    className="min-h-72 font-mono text-xs"
+                    value={programPolicyJSON}
+                    onChange={(e) => setProgramPolicyJSON(e.target.value)}
+                    placeholder={`{
+  "schema_version": 1,
+  "program_id": "your-program-id",
+  "policy_url": "https://bugcrowd.com/engagements/your-program",
+  "source_sha256": "SHA256_OF_THE_EXACT_SAVED_POLICY_TEXT",
+  "expires_at": "REPLACE_WITH_NEAR_TERM_UTC_RFC3339_TIME",
+  "in_scope": [
+    { "pattern": "example.com" },
+    { "pattern": "*.example.com" }
+  ],
+  "out_of_scope": [
+    { "pattern": "admin.example.com" }
+  ],
+  "limits": {
+    "requests_per_second": 1,
+    "burst": 1,
+    "max_concurrency": 1,
+    "request_timeout_seconds": 30,
+    "max_retries": 0
+  },
+  "permissions": {
+    "allow_passive_recon": false,
+    "allow_authenticated_read": false,
+    "allow_active_recon": false,
+    "allow_state_changes": false,
+    "allow_destructive": false
+  }
+}`}
+                  />
+                  <FieldDescription>
+                    {t("For Bug Bounty tasks, attach the reviewed policy snapshot. The server stamps your authenticated operator identity and approval time; it does not fetch or verify the policy page hash, so calculate source_sha256 from the exact saved policy text. In-scope rules default to ports 80/443; list any additional authorized ports explicitly. When attached, WebFetch is scope-checked; web_search requires allow_passive_recon=true; Bash/shell/MCP/custom/unknown tools are blocked until egress sandboxing is implemented. Leaving this blank preserves legacy task behavior and does not provide a Bug Bounty authorization boundary.")}
+                  </FieldDescription>
+                </Field>
+              </CollapsibleContent>
+            </Collapsible>
 
             {/* Advanced parameters are collapsed by default: timeout/heartbeat/first intent; they take space only when expanded, keeping the common path clean. */}
             <Collapsible>

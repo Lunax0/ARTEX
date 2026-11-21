@@ -1,10 +1,10 @@
-// Package guard implements the safety boundary layer (docs §11): an audit log,
-// user-configured intercept-rule evaluation, and Observer/G5 failure attribution.
+// Package guard implements the task execution safety layer: mandatory
+// ProgramPolicy enforcement for policy-bound tasks, optional target approval,
+// user-configured intercept rules, audit logging and Observer/G5 attribution.
 // Every tool call passes through the PreToolUse hook before executing.
-// (The RoE authorization-scope mechanism was removed; a replacement may be added
-// later.) Destructive/exfil gating is no longer hard-coded here — it lives in the
-// DB intercept rules (seeded as ordinary [built-in] rules, so users can disable or
-// delete them), evaluated via applyIntercept.
+// Destructive/exfil gating also remains represented by configurable DB rules;
+// those rules cannot override ProgramPolicy.
+
 package guard
 
 import (
@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
 	"github.com/Autumn-27/norma/hook"
 )
 
@@ -39,7 +41,12 @@ type Guard struct {
 	reg         *hook.Registry
 	interceptor *intercept.Interceptor // optional; nil disables user-configured rules
 	targetOnly  bool                   // planner / main agent: built-in deny rules and target gate only, no user rules, no judge, no audit ring
-	gate        targetGate             // the target gate; nil without an interceptor
+	gate        targetGate             // the optional target gate; nil without an interceptor
+
+	programPolicyMu       sync.RWMutex
+	programPolicy         *policy.CompiledPolicy
+	programPolicyRequired bool
+	programPolicyError    string
 }
 
 // New creates a Guard without user-configured intercept rules (used for pentest
@@ -81,8 +88,22 @@ func (g *Guard) setGate(ic *intercept.Interceptor) {
 // Hooks returns the hook registry to attach to an agent session.
 func (g *Guard) Hooks() *hook.Registry { return g.reg }
 
+// SetProgramPolicy installs the immutable policy snapshot for this task. A
+// required policy with a nil/invalid snapshot fails closed. It is set before
+// task agents start and is not a mid-run mutation API.
+func (g *Guard) SetProgramPolicy(compiled *policy.CompiledPolicy, required bool, compileErr string) {
+	g.programPolicyMu.Lock()
+	g.programPolicy = compiled
+	g.programPolicyRequired = required
+	g.programPolicyError = compileErr
+	g.programPolicyMu.Unlock()
+}
+
 func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
 	cmd := toolAuditCommand(ev)
+	if res := g.applyProgramPolicy(ctx, ev, cmd); res.Decision == "block" {
+		return res
+	}
 	res := g.applyIntercept(ctx, ev, cmd)
 	if g.targetOnly {
 		// Not recorded on a pass: the audit ring is for the gated worker and chat
@@ -116,6 +137,122 @@ func toolAuditCommand(ev hook.Event) string {
 		return in.Text
 	}
 	return ""
+}
+
+// applyProgramPolicy is the mandatory Bug Bounty authorization layer. It
+// intentionally runs before user intercept rules and before the optional Target
+// Gate, so neither an "allow" rule nor a human pin can expand program scope.
+// Until an OS/container egress sandbox exists, only WebFetch (read-only) and
+// explicitly known internal/no-target tools are available to policy-bound tasks.
+// Bash, shell, MCP, deferred and custom tools fail closed.
+func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd string) hook.Result {
+	g.programPolicyMu.RLock()
+	required, compiled, compileErr := g.programPolicyRequired, g.programPolicy, g.programPolicyError
+	g.programPolicyMu.RUnlock()
+	if !required {
+		return hook.Result{}
+	}
+	policyDigest := ""
+	if compiled != nil {
+		policyDigest = compiled.Digest()
+	}
+	logPolicyDecision := func(action, code, reason, digest string) error {
+		if g.interceptor == nil {
+			return fmt.Errorf("ProgramPolicy audit interceptor is unavailable")
+		}
+		// Never persist raw WebFetch input here: it may contain credentials,
+		// cookies, authorization headers or sensitive query parameters. The
+		// policy audit needs the decision and target authority, not request data.
+		target := ""
+		if ev.ToolName == "WebFetch" {
+			if targets := intercept.ExtractTargets(ev.ToolName, ev.Input); len(targets) == 1 {
+				target = net.JoinHostPort(targets[0].Host, strconv.Itoa(targets[0].Port))
+			}
+		}
+		safeInput, _ := json.Marshal(map[string]string{"target": target})
+		status := "denied"
+		if action == "allow" {
+			status = "allowed"
+		}
+		return g.interceptor.LogProgramPolicy(ctx, intercept.ConvIDFromContext(ctx), intercept.Decision{
+			Action: action, PolicyCode: code, Message: "ProgramPolicy " + code + ": " + reason,
+			ConfigDigest: digest,
+		}, ev.ToolName, safeInput, status)
+	}
+	block := func(code, reason string) hook.Result {
+		logPolicyDecision("deny", code, reason, policyDigest)
+		return g.block(ev.ToolName, systemBlockMessage(code+": "+reason), cmd)
+	}
+	if compileErr != "" || compiled == nil {
+		if compileErr == "" {
+			compileErr = "the required policy snapshot is unavailable"
+		}
+		return block(policy.CodeUnavailable, compileErr)
+	}
+
+	scope, scopeOK := intercept.TargetScopeFromContext(ctx)
+	if !scopeOK || !scope.ProgramPolicyRequired || scope.ProgramPolicy == nil ||
+		scope.ProgramPolicyError != "" || scope.ProgramPolicy.Digest() != compiled.Digest() {
+		return block(policy.CodeUnavailable, "the task's reviewed policy did not reach the tool execution context")
+	}
+	if scope.ProgramPolicyCheck == nil {
+		return block(policy.CodeUnavailable, "the ProgramPolicy revocation check is unavailable")
+	}
+	if err := scope.ProgramPolicyCheck(ctx); err != nil {
+		return block(policy.CodeUnavailable, err.Error())
+	}
+	if ev.ToolName == "WebFetch" {
+		if !scopeOK || !scope.ProgramPolicyRequired || scope.ProgramPolicy == nil ||
+			scope.ProgramPolicyError != "" || scope.ProgramPolicy.Digest() != compiled.Digest() {
+			return block(policy.CodeUnavailable, "the task's reviewed policy did not reach the WebFetch execution context")
+		}
+		if decision := compiled.AllowsOperation(policy.OperationReadOnly); !decision.Allowed {
+			return block(decision.Code, decision.Reason)
+		}
+		// ExtractTargets intentionally normalizes URL schemes for general target
+		// detection. WebFetch itself is narrower: only absolute HTTP(S) URLs are
+		// valid inputs to this read-only policy path.
+		var request struct {
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(ev.Input, &request); err != nil {
+			return block(policy.CodeInvalidTarget, "WebFetch input must contain one valid HTTP(S) URL")
+		}
+		u, err := url.Parse(strings.TrimSpace(request.URL))
+		if err != nil || !u.IsAbs() || u.Opaque != "" || u.User != nil || u.Hostname() == "" ||
+			(!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+			return block(policy.CodeInvalidTarget, "WebFetch target must be an absolute HTTP(S) URL without userinfo")
+		}
+		targets := intercept.ExtractTargets(ev.ToolName, ev.Input)
+		if len(targets) != 1 {
+			return block(policy.CodeInvalidTarget, "WebFetch must declare exactly one valid HTTP(S) target")
+		}
+		target := targets[0]
+		decision := compiled.CheckTarget(target.Host, target.Port)
+		if !decision.Allowed {
+			return block(decision.Code, decision.Reason)
+		}
+		targetName := net.JoinHostPort(target.Host, strconv.Itoa(target.Port))
+		if err := logPolicyDecision("allow", "POLICY_ALLOWED", "read-only WebFetch target "+targetName+" is in the reviewed program scope", policyDigest); err != nil {
+			return block(policy.CodeUnavailable, "mandatory policy audit could not be persisted: "+err.Error())
+		}
+		return hook.Result{}
+	}
+	if ev.ToolName == "web_search" {
+		decision := compiled.AllowsOperation(policy.OperationPassiveRecon)
+		if !decision.Allowed {
+			return block(decision.Code, decision.Reason)
+		}
+		if err := logPolicyDecision("allow", decision.Code, "platform web search is permitted by the reviewed passive-recon policy", policyDigest); err != nil {
+			return block(policy.CodeUnavailable, "mandatory policy audit could not be persisted: "+err.Error())
+		}
+		return hook.Result{}
+	}
+	if intercept.IsKnownNoTargetTool(ev.ToolName) {
+		return hook.Result{}
+	}
+	return block(policy.CodeOperationDenied,
+		"tool is not in the policy-safe allowlist; Bash/shell, MCP, deferred, custom and unknown tools are disabled until their network egress is sandboxed")
 }
 
 // targetGate is the approval gate for asset targets, as the guard uses it.
