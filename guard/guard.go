@@ -238,6 +238,16 @@ func (g *Guard) applyProgramPolicy(ctx context.Context, ev hook.Event, cmd strin
 		}
 		return hook.Result{}
 	}
+	if ev.ToolName == "web_search" {
+		decision := compiled.AllowsOperation(policy.OperationPassiveRecon)
+		if !decision.Allowed {
+			return block(decision.Code, decision.Reason)
+		}
+		if err := logPolicyDecision("allow", decision.Code, "platform web search is permitted by the reviewed passive-recon policy", policyDigest); err != nil {
+			return block(policy.CodeUnavailable, "mandatory policy audit could not be persisted: "+err.Error())
+		}
+		return hook.Result{}
+	}
 	if intercept.IsKnownNoTargetTool(ev.ToolName) {
 		return hook.Result{}
 	}
