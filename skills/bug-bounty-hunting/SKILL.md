@@ -56,7 +56,7 @@ Technical verification and platform outcomes are separate. Track Verified, Submi
 
 The Skill does not override ARTEX enforcement.
 
-- In the current ProgramPolicy runtime slice, policy-bound tasks may use the approved WebFetch path and known internal/no-target tools. Bash, shell sessions, arbitrary subprocesses, MCP, custom network tools, browser automation, and unknown network-capable tools remain blocked unless ARTEX has a policy-enforcing egress sandbox and the task policy authorizes them.
+- In the current ProgramPolicy runtime slice, policy-bound tasks may use the approved WebFetch path and known internal/no-target tools. The platform `web_search` tool is a separate passive-recon capability and is allowed only when the reviewed policy explicitly sets `allow_passive_recon`; its decision must be durably audited. Bash, shell sessions, arbitrary subprocesses, MCP, custom network tools, browser automation, and unknown network-capable tools remain blocked unless ARTEX has a policy-enforcing egress sandbox and the task policy authorizes them.
 - Do not bypass a blocked tool by encoding commands into WebFetch, asking another agent to execute them, using a proxy, or switching to an ungoverned client.
 - Do not run ReconFTW, active BBOT modules, Nuclei, ffuf, browser crawlers, or other subprocess/network scanners until ARTEX exposes a reviewed policy-aware adapter and egress boundary. Use only capabilities actually available and authorized.
 - ProgramPolicy request budgets, timeouts, and concurrency controls are mandatory. Do not parallelize beyond the configured limit or retry around a budget denial.
