@@ -2,6 +2,7 @@
 
 Status: M0 source review plus M1 ProgramPolicy runtime integration; latest verified CI run #167 passed Go, Go-stable, Web, Shell and Python jobs. Items marked `PARTIAL` are not certified as safe for live bounty use.  
 Baseline: `8e6acb0638b033d6c6d93eca1cf5d79853b6803b`
+M2 execution-sandbox design: `docs/M2-EXECUTION-SANDBOX.md` (design only; not implemented). The latest verified CI run predates current-head retry, passive-recon and append-only changes.
 
 Legend: `EXISTS` = implementation found in source; `PARTIAL` = useful implementation exists but a material gap remains; `MISSING` = no sufficient implementation identified in this review; `UNTESTED` = source suggests a capability but behavior has not been reproduced in the local baseline.
 
