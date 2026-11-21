@@ -29,7 +29,7 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 
 - `policy/program_test.go`: exact/wildcard semantics, exclusions, ports, CIDR/IP matching, URL parsing, IDNA/trailing-dot normalization, public-suffix wildcard rejection, metadata/expiry, read-only defaults, resolved private addresses, ambiguous numeric hosts, digest stability and detached snapshots.
 - `db/tasks_test.go`: JSONB policy round-trip, legacy NULL behavior and invalid JSON rejection.
-- `db/migrate_test.go`: migration sequence includes `0008_task_program_policy.sql`, `0009_program_policy_events.sql`, `0010_program_policy_shared_budget.sql` and `0011_program_policy_revocations.sql` and `0012_program_policy_network_audit.sql`.
+- `db/migrate_test.go`: migration sequence includes `0008_task_program_policy.sql`, `0009_program_policy_events.sql`, `0010_program_policy_shared_budget.sql` and `0011_program_policy_revocations.sql`, `0012_program_policy_network_audit.sql` and `0013_program_policy_retry_audit.sql`.
 - `server/program_policy_test.go`: server-stamped approver/timestamps, task persistence, runtime compilation and invalid policy rejection.
 - These tests passed in PR #1 workflow run 44707635509. Reproduce locally with `go test ./policy ./db ./server` in the pinned Go toolchain and a disposable PostgreSQL database before release.
 
@@ -67,7 +67,7 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 
 ### Rate and side effects
 - Enforce per-program RPS, burst, concurrency and timeout across the supported WebFetch initial request and redirect path using PostgreSQL shared state.
-- Add 429/503 retries that honor Retry-After and never exceed the policy cap; retries are not implemented yet.
+- `agent/webfetch_egress_test.go`: verify HTTP 429 and 503 retries obey `max_retries`, charge the shared per-program request budget, recheck revocation, write retry audit events and return the final response. Retry-After support remains unavailable because the underlying Norma WebFetch result does not expose that response header.
 - Extend the same policy budget contract to any future network-capable tool before enabling it.
 - GET/HEAD/OPTIONS are not automatically safe; operation semantics and policy still apply.
 - Block destructive/write operations unless an explicit policy capability and an owned test resource are recorded.
