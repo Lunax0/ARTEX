@@ -42,7 +42,7 @@ The repository CI also runs frontend checks, shell checks, posture checks, and o
 - `server/program_policy_test.go`: verify authenticated revoke/status APIs, reject creation from an already revoked source, and ensure revoking one source disables every task sharing the same program ID + source digest.
 - Guard, redirect and dial paths recheck revocation state; missing or unavailable revocation checks fail closed.
 - `db/program_policy_budget_test.go`: verify PostgreSQL-backed rate/concurrency sharing across independent DB handles, redirect token charging and cancellation.
-- Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate; allowed requests fail closed if the durable event ledger is unavailable.
+- Guard policy-denial tests verify the mandatory block path remains ahead of user rules and Target Gate; allowed requests fail closed if the durable event ledger is unavailable. `web_search` must be denied without `allow_passive_recon` and must fail closed if its allow decision cannot be audited.
 - `intercept/target_redirect_test.go` and `intercept/target_dial_test.go`: verify sanitized redirect-hop and resolved-IP dial audit events; allowed network events fail closed if the audit writer is unavailable. Target Gate pins must not widen ProgramPolicy.
 - Latest current-head CI results are tracked in GitHub Actions; no earlier passing run substitutes for the current head.
 
