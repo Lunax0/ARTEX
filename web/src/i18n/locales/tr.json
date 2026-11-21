@@ -2604,5 +2604,23 @@
   "You can control at most 100 tasks at once": "Tek seferde en fazla 100 görevi yönetebilirsiniz",
   "You can control injection into the <b>planner</b> and the <b>worker</b> separately; both are on by default. Switching takes effect immediately (read on the next turn) without rebuilding agents. When off, the agent no longer sees the constraints.": "<b>Planlayıcıya</b> ve <b>çalışana</b> eklemeyi ayrı ayrı denetleyebilirsiniz; ikisi de varsayılan olarak açıktır. Geçiş, ajanlar yeniden oluşturulmadan hemen geçerli olur (bir sonraki turda okunur). Kapalıyken ajan kısıtları artık görmez.",
   "You have read all the terms": "Tüm koşulları okudunuz",
-  "You must comply on your own with all laws and regulations of your country or region on cybersecurity, data security and personal-information protection, computer crime, and the like (for example, laws on unauthorized access to computer systems, on personal-data protection, and on the responsibilities of security researchers and penetration testers in your jurisdiction).": "Ülkenizin veya bölgenizin siber güvenlik, veri güvenliği ve kişisel verilerin korunması, bilişim suçları ve benzeri konulardaki tüm yasa ve yönetmeliklerine kendi sorumluluğunuzda uymanız gerekir (örneğin bilişim sistemlerine yetkisiz erişime, kişisel verilerin korunmasına ve yargı bölgenizdeki güvenlik araştırmacıları ile sızma testi uzmanlarının sorumluluklarına ilişkin yasalar)."
+  "You must comply on your own with all laws and regulations of your country or region on cybersecurity, data security and personal-information protection, computer crime, and the like (for example, laws on unauthorized access to computer systems, on personal-data protection, and on the responsibilities of security researchers and penetration testers in your jurisdiction).": "Ülkenizin veya bölgenizin siber güvenlik, veri güvenliği ve kişisel verilerin korunması, bilişim suçları ve benzeri konulardaki tüm yasa ve yönetmeliklerine kendi sorumluluğunuzda uymanız gerekir (örneğin bilişim sistemlerine yetkisiz erişime, kişisel verilerin korunmasına ve yargı bölgenizdeki güvenlik araştırmacıları ile sızma testi uzmanlarının sorumluluklarına ilişkin yasalar).",
+
+  "ProgramPolicy": "ProgramPolicy",
+  "Revoked": "İptal edildi",
+  "Expired": "Süresi doldu",
+  "Status unavailable": "Durum alınamadı",
+  "Expires": "Son kullanma",
+  "Revoked by": "İptal eden",
+  "Revoke policy": "Politikayı iptal et",
+  "Permanently revoke this ProgramPolicy source?": "Bu ProgramPolicy kaynağı kalıcı olarak iptal edilsin mi?",
+  "This is irreversible. Every task using program {programId} with this exact source digest will be blocked. Create a new reviewed policy snapshot to resume testing.": "Bu işlem geri alınamaz. {programId} programının bu kaynak özetiyle ilişkili tüm görevleri engellenecektir. Teste devam etmek için yeni ve gözden geçirilmiş bir politika anlık görüntüsü oluşturun.",
+  "Required reason for revocation": "İptal gerekçesi gerekli",
+  "Confirm revoke": "İptali onayla",
+  "Revoking…": "İptal ediliyor…",
+  "Could not load ProgramPolicy status: {error}": "ProgramPolicy durumu yüklenemedi: {error}",
+  "ProgramPolicy source revoked. All tasks using this exact source are blocked.": "ProgramPolicy kaynağı iptal edildi. Bu kaynağı kullanan tüm görevler engellendi.",
+  "ProgramPolicy revocation failed: {error}": "ProgramPolicy iptali başarısız: {error}",
+  "A ProgramPolicy snapshot is attached; expiry and revocation are checked during execution.": "Bir ProgramPolicy anlık görüntüsü eklendi; süre sonu ve iptal durumu yürütme sırasında denetlenir.",
+  "The ProgramPolicy snapshot is invalid; policy-bound execution fails closed.": "ProgramPolicy anlık görüntüsü geçersiz; politika kapsamındaki yürütme güvenli biçimde engellenir."
 }
