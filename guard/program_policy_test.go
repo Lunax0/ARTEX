@@ -175,6 +175,9 @@ func TestProgramPolicyFailsClosedWithoutRevocationCheck(t *testing.T) {
 }
 
 func TestProgramPolicyRequiresPassiveReconPermissionForWebSearch(t *testing.T) {
+	if intercept.IsKnownNoTargetTool("web_search") {
+		t.Fatal("web_search must not be classified as a no-target internal tool")
+	}
 	withoutPermission := compiledGuardPolicy(t)
 	g := NewTargetOnly(nil)
 	g.SetProgramPolicy(withoutPermission, true, "")
