@@ -121,8 +121,9 @@ func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, inp
 // paces the call by the rate, jitter and concurrency of the URL's host, and
 // nothing else: WebFetch calls are neither coalesced nor cached, since each
 // tool carries its own proxy and redirect and dial gate (see egress.Do).
-// Norma owns the HTTP client, so redirect hops are not paced separately and a
-// 429/503 is not retried.
+// Norma owns the HTTP client, so redirect hops are charged by its redirect
+// callback. Policy-bound calls retry HTTP 429/503 within the approved cap,
+// shared request budget and request timeout.
 type governedFetch struct {
 	actool.CoreTool
 }
