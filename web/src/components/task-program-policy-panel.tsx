@@ -5,7 +5,17 @@ import * as React from "react";
 import { RefreshCwIcon, ShieldAlertIcon, ShieldCheckIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,8 +77,19 @@ export function TaskProgramPolicyPanel({ task }: { task: Task }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 px-3 py-2">
       <Badge variant={badgeVariant}>
-        {state === "active" ? <ShieldCheckIcon data-icon="inline-start" /> : <ShieldAlertIcon data-icon="inline-start" />}
-        {t("ProgramPolicy")}: {state === "active" ? t("Active") : state === "revoked" ? t("Revoked") : state === "expired" ? t("Expired") : t("Status unavailable")}
+        {state === "active" ? (
+          <ShieldCheckIcon data-icon="inline-start" />
+        ) : (
+          <ShieldAlertIcon data-icon="inline-start" />
+        )}
+        {t("ProgramPolicy")}:{" "}
+        {state === "active"
+          ? t("Active")
+          : state === "revoked"
+            ? t("Revoked")
+            : state === "expired"
+              ? t("Expired")
+              : t("Status unavailable")}
       </Badge>
       {status && (
         <span className="text-xs text-muted-foreground">
