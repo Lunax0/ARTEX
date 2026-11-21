@@ -224,3 +224,72 @@ func TestPolicyBoundWebFetchRetries503WithBudgetAndAudit(t *testing.T) {
 		t.Fatalf("final response was not returned: %q", result.Flatten())
 	}
 }
+
+func TestPolicyBoundWebFetchRetryCapIsAudited(t *testing.T) {
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
+		t.Setenv(key, "")
+	}
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("temporarily unavailable"))
+	}))
+	t.Cleanup(server.Close)
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port64, err := strconv.ParseUint(u.Port(), 10, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	source := sha256.Sum256([]byte("policy-bound webfetch retry-cap test " + now.Format(time.RFC3339Nano)))
+	compiled, err := policy.CompileAt(policy.ProgramPolicy{
+		SchemaVersion: policy.SchemaVersion, ProgramID: "webfetch-retry-cap-test",
+		PolicyURL: "https://bugcrowd.com/engagements/webfetch-retry-cap-test",
+		SourceSHA256: hex.EncodeToString(source[:]), RetrievedAt: now, ApprovedAt: now,
+		ExpiresAt: now.Add(time.Hour), ApprovedBy: "test",
+		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
+		Limits: policy.Limits{RequestsPerSecond: 100, Burst: 2, MaxConcurrency: 1,
+			RequestTimeoutSecond: 10, MaxRetries: 1},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var waits atomic.Int64
+	var actions []string
+	ctx := intercept.WithTargetScope(t.Context(), intercept.TargetScope{
+		TaskID: "webfetch-retry-cap-test", ProgramPolicyRequired: true, ProgramPolicy: compiled,
+		ProgramPolicyCheck: func(context.Context) error { return nil },
+		ProgramPolicyAcquire: func(context.Context, string, policy.Limits) (func(), error) {
+			return func() {}, nil
+		},
+		ProgramPolicyWait: func(context.Context, string, policy.Limits) error {
+			waits.Add(1)
+			return nil
+		},
+		ProgramPolicyAudit: func(_ context.Context, phase, tool, authority, action, code, reason string, _ []string) error {
+			if phase != "retry" || tool != "WebFetch.Retry" || authority != net.JoinHostPort("127.0.0.1", u.Port()) {
+				t.Errorf("unexpected retry audit identity: phase=%q tool=%q authority=%q", phase, tool, authority)
+			}
+			actions = append(actions, action)
+			if action == "deny" && (!strings.Contains(reason, "retry limit exhausted") || code != policy.CodeOperationDenied) {
+				t.Errorf("unexpected retry-cap denial: code=%q reason=%q", code, reason)
+			}
+			return nil
+		},
+	})
+	tool := governedFetch{actool.NewWebFetch(actool.WebFetchConfig{CheckRedirect: intercept.RedirectCheck("WebFetch")})}
+	result, err := tool.Call(ctx, json.RawMessage(fetchInputJSON(server.URL)), &actool.ToolContext{})
+	if err != nil || result.IsError {
+		t.Fatalf("WebFetch retry cap: err=%v result=%q", err, result.Flatten())
+	}
+	if hits.Load() != 2 || waits.Load() != 1 || len(actions) != 2 || actions[0] != "allow" || actions[1] != "deny" {
+		t.Fatalf("hits=%d waits=%d audit actions=%v; want 2,1,[allow deny]", hits.Load(), waits.Load(), actions)
+	}
+	if !strings.HasPrefix(result.Flatten(), "[503 Service Unavailable]") {
+		t.Fatalf("retry cap did not return final 503 response: %q", result.Flatten())
+	}
+}
