@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
 import { TaskLLMProfileChain } from "@/components/task-llm-profile-chain";
+import { TaskProgramPolicyPanel } from "@/components/task-program-policy-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -418,6 +419,7 @@ function TaskDetailInner() {
           </Button>
         </div>
         <p className="truncate text-xs text-muted-foreground">{task.goal}</p>
+        {task.program_policy_bound && <TaskProgramPolicyPanel task={task} />}
         {/* Tabs */}
         <div className="no-scrollbar min-w-0 overflow-x-auto">
           <TabsList variant="default" className="min-w-max">
