@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/Autumn-27/artex/egress"
 	"github.com/Autumn-27/artex/intercept"
+	"github.com/Autumn-27/artex/policy"
+	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
 )
 
@@ -39,6 +42,13 @@ func withWebFetch(ctx context.Context, tools []actool.CoreTool, proxy, caCert st
 // egressGovernor resolves the governor of a WebFetch call, once per call so a
 // changed noise profile applies to the next call; a test may pin it.
 var egressGovernor = egress.Current
+
+func policyToolError(message string) actool.Result {
+	return actool.Result{
+		Content: []llm.ContentBlock{llm.TextBlock(message)},
+		IsError: true,
+	}
+}
 
 func retryablePolicyHTTPStatus(result actool.Result) (int, bool) {
 	if result.IsError {
@@ -82,7 +92,7 @@ func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, inp
 		if scope.ProgramPolicyAudit != nil {
 			_ = auditRetry("deny", policy.CodeOperationDenied, reason)
 		}
-		return actool.Errorf("ARTEX policy control: " + reason), nil
+		return policyToolError("ARTEX policy control: " + reason), nil
 	}
 	for attempt := 1; ; attempt++ {
 		status, retry := retryablePolicyHTTPStatus(result)
@@ -119,11 +129,11 @@ func (f governedFetch) callWithPolicyRetries(ctx, budgetCtx context.Context, inp
 			return denyRetry("policy revocation check failed after retry backoff; retry blocked")
 		}
 		if scope.ProgramPolicyAudit == nil {
-			return actool.Errorf("ARTEX policy control: retry audit writer is unavailable; retry blocked"), nil
+			return policyToolError("ARTEX policy control: retry audit writer is unavailable; retry blocked"), nil
 		}
 		reason := fmt.Sprintf("retrying HTTP %d response after bounded backoff (attempt %d of %d)", status, attempt, limits.MaxRetries)
 		if err := auditRetry("allow", policy.CodeAllowed, reason); err != nil {
-			return actool.Errorf("ARTEX policy control: retry audit could not be persisted; retry blocked"), nil
+			return policyToolError("ARTEX policy control: retry audit could not be persisted; retry blocked"), nil
 		}
 		result, err = f.CoreTool.Call(budgetCtx, input, tc)
 		if err != nil {
