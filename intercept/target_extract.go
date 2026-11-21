@@ -18,7 +18,6 @@ const executeExtraTool = "ExecuteExtraTool"
 // domain tools, which read and write the platform's own records. Every name
 // that is not listed here is scanned, so a tool added later is gated by default.
 var noTargetTools = toolSet(
-	"web_search",
 	"Read", "Write", "Edit", "MultiEdit", "LS", "Glob", "Grep",
 	"TodoWrite", "sleep", "TaskOutput", "TaskStop", "TaskList",
 	// exploration graph, assets, findings, goals (agent.ToolSet)
