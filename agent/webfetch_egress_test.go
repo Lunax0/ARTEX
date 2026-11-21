@@ -174,10 +174,13 @@ func TestPolicyBoundWebFetchRetries429And503WithBudgetAndAudit(t *testing.T) {
 	source := sha256.Sum256([]byte("policy-bound webfetch retry test " + now.Format(time.RFC3339Nano)))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
 		SchemaVersion: policy.SchemaVersion,
-		ProgramID: "webfetch-retry-test",
-		PolicyURL: "https://bugcrowd.com/engagements/webfetch-retry-test",
-		SourceSHA256: hex.EncodeToString(source[:]),
-		RetrievedAt: now, ApprovedAt: now, ExpiresAt: now.Add(time.Hour), ApprovedBy: "test",
+		ProgramID:     "webfetch-retry-test",
+		PolicyURL:     "https://bugcrowd.com/engagements/webfetch-retry-test",
+		SourceSHA256:  hex.EncodeToString(source[:]),
+		RetrievedAt:   now,
+		ApprovedAt:    now,
+		ExpiresAt:     now.Add(time.Hour),
+		ApprovedBy:    "test",
 		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
 		Limits: policy.Limits{
 			RequestsPerSecond: 100, Burst: 3, MaxConcurrency: 1,
@@ -248,13 +251,22 @@ func TestPolicyBoundWebFetchRetryCapIsAudited(t *testing.T) {
 	now := time.Now().UTC()
 	source := sha256.Sum256([]byte("policy-bound webfetch retry-cap test " + now.Format(time.RFC3339Nano)))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
-		SchemaVersion: policy.SchemaVersion, ProgramID: "webfetch-retry-cap-test",
-		PolicyURL: "https://bugcrowd.com/engagements/webfetch-retry-cap-test",
-		SourceSHA256: hex.EncodeToString(source[:]), RetrievedAt: now, ApprovedAt: now,
-		ExpiresAt: now.Add(time.Hour), ApprovedBy: "test",
+		SchemaVersion: policy.SchemaVersion,
+		ProgramID:     "webfetch-retry-cap-test",
+		PolicyURL:     "https://bugcrowd.com/engagements/webfetch-retry-cap-test",
+		SourceSHA256:  hex.EncodeToString(source[:]),
+		RetrievedAt:   now,
+		ApprovedAt:    now,
+		ExpiresAt:     now.Add(time.Hour),
+		ApprovedBy:    "test",
 		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
-		Limits: policy.Limits{RequestsPerSecond: 100, Burst: 2, MaxConcurrency: 1,
-			RequestTimeoutSecond: 10, MaxRetries: 1},
+		Limits: policy.Limits{
+			RequestsPerSecond:    100,
+			Burst:                2,
+			MaxConcurrency:       1,
+			RequestTimeoutSecond: 10,
+			MaxRetries:           1,
+		},
 	}, now)
 	if err != nil {
 		t.Fatal(err)
@@ -317,13 +329,22 @@ func TestPolicyBoundWebFetchRechecksRevocationAfterRetryBackoff(t *testing.T) {
 	now := time.Now().UTC()
 	source := sha256.Sum256([]byte("policy-bound webfetch retry revocation test " + now.Format(time.RFC3339Nano)))
 	compiled, err := policy.CompileAt(policy.ProgramPolicy{
-		SchemaVersion: policy.SchemaVersion, ProgramID: "webfetch-retry-revocation-test",
-		PolicyURL: "https://bugcrowd.com/engagements/webfetch-retry-revocation-test",
-		SourceSHA256: hex.EncodeToString(source[:]), RetrievedAt: now, ApprovedAt: now,
-		ExpiresAt: now.Add(time.Hour), ApprovedBy: "test",
+		SchemaVersion: policy.SchemaVersion,
+		ProgramID:     "webfetch-retry-revocation-test",
+		PolicyURL:     "https://bugcrowd.com/engagements/webfetch-retry-revocation-test",
+		SourceSHA256:  hex.EncodeToString(source[:]),
+		RetrievedAt:   now,
+		ApprovedAt:    now,
+		ExpiresAt:     now.Add(time.Hour),
+		ApprovedBy:    "test",
 		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
-		Limits: policy.Limits{RequestsPerSecond: 100, Burst: 2, MaxConcurrency: 1,
-			RequestTimeoutSecond: 10, MaxRetries: 1},
+		Limits: policy.Limits{
+			RequestsPerSecond:    100,
+			Burst:                2,
+			MaxConcurrency:       1,
+			RequestTimeoutSecond: 10,
+			MaxRetries:           1,
+		},
 	}, now)
 	if err != nil {
 		t.Fatal(err)
