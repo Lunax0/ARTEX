@@ -143,7 +143,7 @@ func TestPolicyBoundWebFetchChargesRedirect(t *testing.T) {
 	}
 }
 
-func TestPolicyBoundWebFetchRetries503WithBudgetAndAudit(t *testing.T) {
+func TestPolicyBoundWebFetchRetries429And503WithBudgetAndAudit(t *testing.T) {
 	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"} {
 		t.Setenv(key, "")
 	}
