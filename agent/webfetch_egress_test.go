@@ -148,7 +148,12 @@ func TestPolicyBoundWebFetchRetries503WithBudgetAndAudit(t *testing.T) {
 	}
 	var hits atomic.Int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if hits.Add(1) == 1 {
+		switch hits.Add(1) {
+		case 1:
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte("rate limited"))
+			return
+		case 2:
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("temporary unavailable"))
 			return
@@ -175,7 +180,7 @@ func TestPolicyBoundWebFetchRetries503WithBudgetAndAudit(t *testing.T) {
 		InScope: []policy.AssetRule{{Pattern: "127.0.0.1", Ports: []uint16{uint16(port64)}}},
 		Limits: policy.Limits{
 			RequestsPerSecond: 100, Burst: 3, MaxConcurrency: 1,
-			RequestTimeoutSecond: 10, MaxRetries: 1,
+			RequestTimeoutSecond: 10, MaxRetries: 2,
 		},
 	}, now)
 	if err != nil {
@@ -196,7 +201,7 @@ func TestPolicyBoundWebFetchRetries503WithBudgetAndAudit(t *testing.T) {
 			if phase != "retry" || tool != "WebFetch.Retry" ||
 				authority != net.JoinHostPort("127.0.0.1", u.Port()) ||
 				action != "allow" || code != policy.CodeAllowed ||
-				!strings.Contains(reason, "HTTP 503") || len(ips) != 0 {
+				(!strings.Contains(reason, "HTTP 429") && !strings.Contains(reason, "HTTP 503")) || len(ips) != 0 {
 				t.Errorf("unexpected retry audit: phase=%q tool=%q authority=%q action=%q code=%q reason=%q IPs=%v",
 					phase, tool, authority, action, code, reason, ips)
 			}
@@ -211,8 +216,8 @@ func TestPolicyBoundWebFetchRetries503WithBudgetAndAudit(t *testing.T) {
 	if err != nil || result.IsError {
 		t.Fatalf("WebFetch retry: err=%v result=%q", err, result.Flatten())
 	}
-	if hits.Load() != 2 || waits.Load() != 1 || audits.Load() != 1 || checks.Load() < 3 {
-		t.Fatalf("hits=%d waits=%d audits=%d revocation checks=%d; want 2,1,1,and >=3",
+	if hits.Load() != 3 || waits.Load() != 2 || audits.Load() != 2 || checks.Load() < 4 {
+		t.Fatalf("hits=%d waits=%d audits=%d revocation checks=%d; want 3,2,2,and >=4",
 			hits.Load(), waits.Load(), audits.Load(), checks.Load())
 	}
 	if !strings.Contains(result.Flatten(), "[200 OK]") {
