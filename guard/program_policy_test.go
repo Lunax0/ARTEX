@@ -15,6 +15,10 @@ import (
 )
 
 func compiledGuardPolicy(t *testing.T) *policy.CompiledPolicy {
+	return compiledGuardPolicyWithPassiveRecon(t, false)
+}
+
+func compiledGuardPolicyWithPassiveRecon(t *testing.T, allowPassiveRecon bool) *policy.CompiledPolicy {
 	t.Helper()
 	now := time.Now().UTC()
 	sum := sha256.Sum256([]byte("reviewed policy source"))
@@ -35,6 +39,7 @@ func compiledGuardPolicy(t *testing.T) *policy.CompiledPolicy {
 			RequestsPerSecond: 1, Burst: 1, MaxConcurrency: 1,
 			RequestTimeoutSecond: 30, MaxRetries: 0,
 		},
+		Permissions: policy.Permissions{AllowPassiveRecon: allowPassiveRecon},
 	}, now)
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +105,7 @@ func TestProgramPolicyBlocksUncontrolledNetworkTools(t *testing.T) {
 			t.Errorf("%s: block=%v msg=%q, want policy operation denial", tool, block, msg)
 		}
 	}
-	for _, tool := range []string{"list_assets", "web_search", "Read"} {
+	for _, tool := range []string{"list_assets", "Read"} {
 		if block, msg := callPolicyGuard(g, ctx, tool, `{"query":"api.example.net"}`); block {
 			t.Errorf("%s: known internal/no-target tool unexpectedly blocked: %s", tool, msg)
 		}
@@ -166,5 +171,25 @@ func TestProgramPolicyFailsClosedWithoutRevocationCheck(t *testing.T) {
 	if block, msg := callPolicyGuard(g, ctx, "list_assets", `{}`); !block ||
 		!strings.Contains(msg, policy.CodeUnavailable) {
 		t.Fatalf("missing revocation check was not fail-closed: block=%v msg=%q", block, msg)
+	}
+}
+
+func TestProgramPolicyRequiresPassiveReconPermissionForWebSearch(t *testing.T) {
+	withoutPermission := compiledGuardPolicy(t)
+	g := NewTargetOnly(nil)
+	g.SetProgramPolicy(withoutPermission, true, "")
+	ctx := policyGuardContext(withoutPermission, nil)
+	if block, msg := callPolicyGuard(g, ctx, "web_search", `{"query":"api.example.net"}`); !block ||
+		!strings.Contains(msg, policy.CodeOperationDenied) {
+		t.Fatalf("web_search without passive-recon permission: block=%v msg=%q", block, msg)
+	}
+
+	withPermission := compiledGuardPolicyWithPassiveRecon(t, true)
+	g = NewTargetOnly(nil)
+	g.SetProgramPolicy(withPermission, true, "")
+	ctx = policyGuardContext(withPermission, nil)
+	if block, msg := callPolicyGuard(g, ctx, "web_search", `{"query":"api.example.net"}`); !block ||
+		!strings.Contains(msg, policy.CodeUnavailable) {
+		t.Fatalf("web_search without durable policy audit must fail closed: block=%v msg=%q", block, msg)
 	}
 }
